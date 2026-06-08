@@ -566,7 +566,17 @@ npm test         # server vitest; also runs client tests if the workspace adds t
 npm run build    # compile server and dashboard
 ```
 
-PRs should include a test, keep the existing test suite green, and match the `.editorconfig` / tsconfig defaults already in the repo. Issues and discussions are open.
+PRs should include a test, keep the existing test suite green, and match the `.editorconfig` / tsconfig defaults already in the repo. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full contributor workflow.
+
+### Database Migrations
+
+In local development, apply pending migrations with:
+
+```bash
+NODE_ENV=development npm run db:migration:up
+```
+
+See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full migration CLI and workflow.
 
 ### Contributors
 
