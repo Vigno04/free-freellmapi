@@ -153,6 +153,20 @@ proxyRouter.get('/models', (req: Request, res: Response) => {
   const onlyAvailable = q === '1' || q === 'true' || q === 'yes';
   const listed = onlyAvailable ? models.filter(m => m.available === 1) : models;
 
+  // "auto" routes to whichever model fits, so its honest ceiling is the largest
+  // context window among models that can serve a request right now. Advertising
+  // null here makes OpenAI-compatible clients (opencode, Continue) fall back to
+  // their own conservative default — commonly ~16k — and truncate long inputs
+  // before they ever reach us (#282). Computed over currently-available models
+  // (not the query-filtered `listed`) so the ceiling is honest even on the
+  // default unfiltered list; null only when nothing is connected.
+  const availableContextWindows = models
+    .filter(m => m.available === 1 && m.context_window != null)
+    .map(m => m.context_window as number);
+  const autoContextWindow = availableContextWindows.length > 0
+    ? Math.max(...availableContextWindows)
+    : null;
+
   res.json({
     object: 'list',
     data: [
@@ -162,7 +176,11 @@ proxyRouter.get('/models', (req: Request, res: Response) => {
         created: 0,
         owned_by: 'freellmapi',
         name: 'Auto (router picks the best available model)',
-        context_window: null,
+        context_window: autoContextWindow,
+        // `context_length` is OpenRouter's field name and the one most
+        // OpenAI-compatible clients read; emit both so whichever a client
+        // looks for is populated. Additive — clients ignore unknown fields.
+        context_length: autoContextWindow,
         available: true,
         unavailable_reason: null,
       },
@@ -173,6 +191,7 @@ proxyRouter.get('/models', (req: Request, res: Response) => {
         owned_by: m.platform,
         name: m.display_name,
         context_window: m.context_window,
+        context_length: m.context_window,
         // Non-standard but additive: OpenAI clients ignore unknown fields.
         available: m.available === 1,
         unavailable_reason: m.available === 1 ? null : (m.enabled === 1 ? 'no_key' : 'disabled'),

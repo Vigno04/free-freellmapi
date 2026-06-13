@@ -135,6 +135,33 @@ describe('Virtual "auto" model', () => {
     }
   });
 
+  // #282: clients read a model's context window from /v1/models; advertise it
+  // under both `context_window` and the OpenRouter-convention `context_length`,
+  // and give "auto" the largest window among connected models so clients don't
+  // fall back to a conservative ~16k default and truncate long inputs.
+  it('advertises context_length and a non-null auto context window (#282)', async () => {
+    const { status, body } = await request(app, 'GET', '/v1/models', undefined, authHeaders());
+    expect(status).toBe(200);
+
+    const auto = body.data.find((m: any) => m.id === 'auto');
+    expect(auto.context_window).toBe(auto.context_length);
+    expect(typeof auto.context_window).toBe('number');
+    expect(auto.context_window).toBeGreaterThan(0);
+
+    // Every real model mirrors context_window into context_length.
+    const connected = body.data.filter((m: any) => m.id !== 'auto' && m.available);
+    expect(connected.length).toBeGreaterThan(0);
+    for (const m of connected) {
+      expect(m.context_length).toBe(m.context_window);
+    }
+
+    // Auto's advertised ceiling is the max window among connected models.
+    const maxConnected = Math.max(
+      ...connected.filter((m: any) => m.context_window != null).map((m: any) => m.context_window),
+    );
+    expect(auto.context_window).toBe(maxConnected);
+  });
+
   it('treats model:"auto" as auto-route instead of a 400', async () => {
     const origFetch = global.fetch;
 
