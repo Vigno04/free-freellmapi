@@ -1,6 +1,6 @@
 services:
   freellmapi:
-    image: ghcr.io/Vigno04/free-freellmapi:latest
+    image: ghcr.io/vigno04/free-freellmapi:latest
     build:
       context: .
       dockerfile: Dockerfile
