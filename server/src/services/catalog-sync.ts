@@ -47,18 +47,37 @@ MCowBQYDK2VwAyEAq9yv4+3EeyMHKsfVYBhkcz1lYgIXSUeHNnN6tNgYX3k=
 // migration lands, so the bundled DB is always the floor.
 export const MIN_CATALOG_VERSION = '2026.06.07';
 
-const SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000; // twice daily
-const BOOT_DELAY_MS = 10 * 1000; // let the server settle before first sync
+export const SETTING_LICENSE_KEY = 'premium_license_key';
+export const SETTING_LICENSE_STATUS = 'premium_license_status';
+export const SETTING_CATALOG_SOURCE = 'catalog_source';
+export const SETTING_CATALOG_SYNC_INTERVAL = 'catalog_sync_interval';
+export const SETTING_CATALOG_FALLBACK_SOURCES = 'catalog_fallback_sources';
+
+const DEFAULT_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000; // twice daily
+const BOOT_DELAY_MS = 10_000; // 10s wait on cold start
+
+export function getSyncIntervalMs(): number {
+  const intervalStr = getSetting(SETTING_CATALOG_SYNC_INTERVAL) || '12h';
+  switch (intervalStr) {
+    case '12h': return 12 * 60 * 60 * 1000;
+    case '24h': return 24 * 60 * 60 * 1000;
+    case '72h': return 72 * 60 * 60 * 1000;
+    case 'weekly': return 7 * 24 * 60 * 60 * 1000;
+    default: return DEFAULT_SYNC_INTERVAL_MS;
+  }
+}
+
 const FETCH_TIMEOUT_MS = 20 * 1000;
 
 // settings table keys
-export const SETTING_LICENSE_KEY = 'premium_license_key';
-export const SETTING_LICENSE_STATUS = 'premium_license_status'; // JSON LicenseStatus
 const SETTING_APPLIED_VERSION = 'catalog_applied_version';
 const SETTING_APPLIED_TIER = 'catalog_applied_tier';
 const SETTING_APPLIED_JSON = 'catalog_applied_json';
 const SETTING_LAST_SYNC_MS = 'catalog_last_sync_ms';
 const SETTING_LAST_ERROR = 'catalog_last_error';
+
+export const SOURCE_DEFAULT = 'default';
+export const SOURCE_FREELLM = 'freellm';
 
 export function catalogBaseUrl(): string {
   return (process.env.CATALOG_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/, '');
@@ -345,11 +364,149 @@ export function applyCatalog(db: Db, catalog: Catalog): NonNullable<SyncResult['
  * `force` skips the `since` short-circuit — used right after a license key is
  * added or removed, where the tier can change without the version changing.
  */
-export async function syncCatalog(force = false): Promise<SyncResult> {
-  const db = getDb();
+
+export async function fetchFreellmModels(): Promise<CatalogModel[]> {
+  const modelsRes = await fetch('https://freellm.net/models', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!modelsRes.ok) throw new Error(`Failed to fetch freellm.net models: HTTP ${modelsRes.status}`);
+  const html = await modelsRes.text();
+
+  const pgRes = await fetch('https://freellm.net/playground', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  if (!pgRes.ok) throw new Error(`Failed to fetch freellm.net playground: HTTP ${pgRes.status}`);
+  const pgHtml = await pgRes.text();
+
+  const pgJsonMatch = pgHtml.match(/<script id="playground-data" type="application\/json">([\s\S]*?)<\/script>/);
+  const pgItems = pgJsonMatch ? JSON.parse(pgJsonMatch[1]) : [];
+
+  const pgLookup: Record<string, string> = {};
+  pgItems.forEach((item: any) => {
+    let slug = '';
+    if (item.url) {
+      const match = item.url.match(/\/models\/[^/]+\/([^/]+)/);
+      if (match) slug = match[1].replace(/\/$/, '');
+    }
+    if (!slug) {
+      slug = (item.id || '').toLowerCase().replace(/[\/.:]/g, '-');
+    }
+    pgLookup[`${item.providerSlug}:${slug}`] = item.apiModelId || item.id;
+  });
+
+  const platformMap: Record<string, string> = {
+    'nvidia-nim': 'nvidia',
+    'openrouter': 'openrouter',
+    'cloudflare-workers-ai': 'cloudflare',
+    'google-gemini': 'google',
+    'ovhcloud-ai-endpoints': 'ovh',
+    'groq': 'groq',
+    'mistral-ai': 'mistral',
+    'llm7-io': 'llm7',
+    'cerebras': 'cerebras',
+    'cohere': 'cohere',
+    'ollama-cloud': 'ollama',
+    'opencode': 'opencode',
+    'agnes-ai': 'agnes',
+    'hugging-face': 'huggingface',
+    'kilo-code': 'kilo',
+    'z-ai-zhipu-ai': 'zhipu',
+    'sambanova': 'sambanova',
+    'siliconflow': 'siliconflow',
+    'routeway': 'routeway',
+    'bazaarlink': 'bazaarlink',
+    'ainative': 'ainative',
+    'nara': 'nara',
+    'ai-horde': 'aihorde',
+    'modelscope': 'modelscope',
+    'github-models': 'github',
+    'aion-labs': 'aionlabs',
+    'glhf-chat': 'glhf',
+    'chutes-ai': 'chutes',
+    'grok-(xai)': 'grok'
+  };
+
+  const trRegex = /<tr[^>]*?class="[^"]*?model-row[^"]*?"([^>]*?)>/g;
+  let match;
+  const models: CatalogModel[] = [];
+
+  while ((match = trRegex.exec(html)) !== null) {
+    const attrsStr = match[1];
+    const attrs: Record<string, string> = {};
+    const attrRegex = /data-([a-zA-Z0-9-]+)="([^"]*?)"/g;
+    let attrMatch;
+    while ((attrMatch = attrRegex.exec(attrsStr)) !== null) {
+      attrs[attrMatch[1]] = attrMatch[2];
+    }
+
+    const providerSlug = attrs['provider-slug'];
+    const platform = platformMap[providerSlug];
+    if (!platform) continue;
+
+    const rowStart = match.index;
+    const rowEnd = html.indexOf('</tr>', rowStart);
+    const rowHtml = html.substring(rowStart, rowEnd !== -1 ? rowEnd : html.length);
+    
+    const hrefMatch = rowHtml.match(/href="\/models\/[^/]+\/([^"]+?)"/);
+    const slug = hrefMatch ? hrefMatch[1].replace(/\/$/, '') : '';
+
+    let modelId = pgLookup[`${providerSlug}:${slug}`];
+
+    if (!modelId) {
+      modelId = attrs.name;
+      if (platform === 'openrouter') {
+        modelId = slug.replace('-', '/');
+        if (attrs.free === '1' && !modelId.endsWith(':free')) {
+          modelId += ':free';
+        }
+      } else if (platform === 'google') {
+        modelId = slug.replace(/-(\d)-(\d)-/g, '-$1.$2-');
+      } else if (platform === 'cloudflare') {
+        modelId = slug;
+        if (modelId.startsWith('cf-')) {
+          modelId = '@cf/' + modelId.substring(3).replace(/-(\d)-(\d)-/g, '-$1.$2-').replace('-', '/');
+        }
+      } else {
+        modelId = slug.replace(/-(\d)-(\d)-/g, '-$1.$2-');
+      }
+    }
+
+    let rpm = null, rpd = null, tpm = null, tpd = null;
+    const rateLimitStr = rowHtml.match(/<td[^>]*>([\s\S]*?)<\/td>/g);
+    if (rateLimitStr && rateLimitStr[5]) {
+      const text = rateLimitStr[5].replace(/<[^>]*>/g, '').trim();
+      const rpmMatch = text.match(/(\d+(?:,\d+)?)\s*RPM/i);
+      if (rpmMatch) rpm = parseInt(rpmMatch[1].replace(/,/g, ''), 10);
+      const rpdMatch = text.match(/(\d+(?:,\d+)?)\s*(?:RPD|req\/day)/i);
+      if (rpdMatch) rpd = parseInt(rpdMatch[1].replace(/,/g, ''), 10);
+      const tpmMatch = text.match(/(\d+(?:,\d+)?)\s*TPM/i);
+      if (tpmMatch) tpm = parseInt(tpmMatch[1].replace(/,/g, ''), 10);
+      const tpdMatch = text.match(/(\d+(?:,\d+)?)\s*TPD/i);
+      if (tpdMatch) tpd = parseInt(tpdMatch[1].replace(/,/g, ''), 10);
+    }
+
+    const contextWindow = attrs.context ? parseInt(attrs.context, 10) : null;
+    const isImage = attrs.modality && (attrs.modality.includes('image') || attrs.modality.includes('video'));
+    const modality = isImage ? 'image' : 'text';
+
+    models.push({
+      platform,
+      modelId,
+      displayName: attrs.name,
+      intelligenceRank: attrs.score ? parseInt(attrs.score, 10) : 50,
+      speedRank: 50,
+      sizeLabel: 'Free',
+      limits: { rpm, rpd, tpm, tpd },
+      monthlyTokenBudget: '',
+      contextWindow,
+      enabled: attrs.free === '1',
+      supportsVision: attrs.modality ? attrs.modality.includes('vision') : false,
+      supportsTools: true,
+      modality
+    });
+  }
+  return models;
+}
+
+export async function fetchDefaultCatalog(force = false): Promise<{ catalog: Catalog | null, isNotModified: boolean, rawBytes?: Buffer, error?: Error }> {
   const key = getSetting(SETTING_LICENSE_KEY);
   const applied = getSetting(SETTING_APPLIED_VERSION);
-
   try {
     const headers: Record<string, string> = {};
     if (key) headers.Authorization = `Bearer ${key}`;
@@ -359,9 +516,7 @@ export async function syncCatalog(force = false): Promise<SyncResult> {
     const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
     if (res.status === 304) {
-      setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
-      setSetting(SETTING_LAST_ERROR, '');
-      return { ok: true, action: 'up_to_date', version: applied };
+      return { catalog: null, isNotModified: true };
     }
     if (!res.ok) throw new Error(`catalog fetch failed: HTTP ${res.status}`);
 
@@ -373,43 +528,150 @@ export async function syncCatalog(force = false): Promise<SyncResult> {
 
     const parsed: unknown = JSON.parse(bytes.toString('utf8'));
     if (!isCatalog(parsed)) throw new Error('catalog payload has unexpected shape');
-    const catalog = parsed;
+    
+    return { catalog: parsed, isNotModified: false, rawBytes: bytes };
+  } catch (err) {
+    return { catalog: null, isNotModified: false, error: err instanceof Error ? err : new Error(String(err)) };
+  }
+}
 
-    if (catalog.version < MIN_CATALOG_VERSION) {
-      // Older than the bundled baseline (e.g. monthly snapshot lagging a fresh
-      // app release) — applying it would roll back migrations. Wait it out.
-      setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
-      setSetting(SETTING_LAST_ERROR, '');
-      return { ok: true, action: 'skipped_older', version: catalog.version, tier: catalog.tier };
+export async function syncCatalog(force = false): Promise<SyncResult> {
+  const db = getDb();
+  const primarySource = getSetting(SETTING_CATALOG_SOURCE) || SOURCE_DEFAULT;
+  const fallbacksStr = getSetting(SETTING_CATALOG_FALLBACK_SOURCES) || '';
+  const fallbackSources = fallbacksStr.split(',').map(s => s.trim()).filter(Boolean);
+
+  let primaryCatalog: Catalog | null = null;
+  let rawDefaultBytes: Buffer | null = null;
+  let defaultTier = getSetting(SETTING_APPLIED_TIER);
+  let defaultVersion = getSetting(SETTING_APPLIED_VERSION);
+
+  // 1. Fetch primary
+  try {
+    if (primarySource === SOURCE_FREELLM) {
+      const models = await fetchFreellmModels();
+      const d = new Date();
+      const versionStr = `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${String(d.getUTCDate()).padStart(2, '0')}`;
+      primaryCatalog = {
+        version: versionStr,
+        generatedAt: d.toISOString(),
+        tier: 'live',
+        models: models,
+        quirks: []
+      };
+    } else {
+      const result = await fetchDefaultCatalog(force);
+      if (result.error) {
+        throw result.error;
+      }
+      if (result.isNotModified) {
+        // Not modified, no force, we can short circuit
+        setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
+        setSetting(SETTING_LAST_ERROR, '');
+        return { ok: true, action: 'up_to_date', version: getSetting(SETTING_APPLIED_VERSION) ?? undefined };
+      }
+      
+      const catalog = result.catalog!;
+      if (catalog.version < MIN_CATALOG_VERSION) {
+        setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
+        setSetting(SETTING_LAST_ERROR, '');
+        return { ok: true, action: 'skipped_older', version: catalog.version, tier: catalog.tier };
+      }
+
+      // Check if same as applied
+      const sameAsApplied = getSetting(SETTING_APPLIED_VERSION) === catalog.version && getSetting(SETTING_APPLIED_TIER) === catalog.tier;
+      if (sameAsApplied && !force) {
+        setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
+        setSetting(SETTING_LAST_ERROR, '');
+        return { ok: true, action: 'up_to_date', version: catalog.version, tier: catalog.tier };
+      }
+
+      primaryCatalog = catalog;
+      rawDefaultBytes = result.rawBytes || null;
+      defaultTier = catalog.tier;
+      defaultVersion = catalog.version;
     }
-
-    const sameAsApplied = applied === catalog.version && getSetting(SETTING_APPLIED_TIER) === catalog.tier;
-    if (!sameAsApplied) {
-      const counts = applyCatalog(db, catalog);
-      setSetting(SETTING_APPLIED_VERSION, catalog.version);
-      setSetting(SETTING_APPLIED_TIER, catalog.tier);
-      // Cache the verified document so boots can re-apply it offline (see
-      // reapplyCachedCatalog). Stored post-verification: anything that could
-      // tamper this row could tamper the models table directly, so the cache
-      // adds no new trust surface.
-      setSetting(SETTING_APPLIED_JSON, bytes.toString('utf8'));
-      console.log(
-        `[catalog-sync] applied ${catalog.tier} v${catalog.version}: ` +
-          `${counts.updated} updated, ${counts.inserted} new, ${counts.removed} removed, ` +
-          `${counts.quirks} quirks` +
-          (counts.skippedUnknownPlatform ? `, ${counts.skippedUnknownPlatform} skipped (unknown platform)` : ''),
-      );
-      setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
-      setSetting(SETTING_LAST_ERROR, '');
-      return { ok: true, action: 'applied', version: catalog.version, tier: catalog.tier, counts };
-    }
-
-    setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
-    setSetting(SETTING_LAST_ERROR, '');
-    return { ok: true, action: 'up_to_date', version: catalog.version, tier: catalog.tier };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[catalog-sync] ${message}`);
+    console.warn(`[catalog-sync] fetch failed: ${message}`);
+    setSetting(SETTING_LAST_ERROR, message);
+    return { ok: false, action: 'error', detail: message };
+  }
+
+  if (!primaryCatalog) {
+    return { ok: false, action: 'error', detail: 'Unknown error resolving primary catalog' };
+  }
+
+  // 2. Fetch fallbacks
+  const fallbackModelsMap = new Map<string, CatalogModel>();
+  for (const fallback of fallbackSources) {
+    if (fallback === primarySource) continue;
+    try {
+      if (fallback === SOURCE_FREELLM) {
+        const models = await fetchFreellmModels();
+        for (const m of models) fallbackModelsMap.set(`${m.platform}:${m.modelId}`, m);
+      } else if (fallback === SOURCE_DEFAULT) {
+        const result = await fetchDefaultCatalog(true); // force to skip 304
+        if (result.catalog) {
+          for (const m of result.catalog.models) fallbackModelsMap.set(`${m.platform}:${m.modelId}`, m);
+        }
+      }
+    } catch (err) {
+      console.warn(`[catalog-sync] Failed to fetch fallback source ${fallback}`, err);
+    }
+  }
+
+  // 3. Merge data
+  for (const pm of primaryCatalog.models) {
+    const fm = fallbackModelsMap.get(`${pm.platform}:${pm.modelId}`);
+    if (fm) {
+      if (!pm.limits) pm.limits = { rpm: null, rpd: null, tpm: null, tpd: null };
+      if (!fm.limits) fm.limits = { rpm: null, rpd: null, tpm: null, tpd: null };
+      
+      if (pm.intelligenceRank === 50 && fm.intelligenceRank !== 50) pm.intelligenceRank = fm.intelligenceRank;
+      if (pm.speedRank === 50 && fm.speedRank !== 50) pm.speedRank = fm.speedRank;
+      if (pm.sizeLabel === 'Free' && fm.sizeLabel !== 'Free') pm.sizeLabel = fm.sizeLabel;
+      if (pm.limits.rpm === null && fm.limits.rpm !== null) pm.limits.rpm = fm.limits.rpm;
+      if (pm.limits.rpd === null && fm.limits.rpd !== null) pm.limits.rpd = fm.limits.rpd;
+      if (pm.limits.tpm === null && fm.limits.tpm !== null) pm.limits.tpm = fm.limits.tpm;
+      if (pm.limits.tpd === null && fm.limits.tpd !== null) pm.limits.tpd = fm.limits.tpd;
+      if (pm.contextWindow === null && fm.contextWindow !== null) pm.contextWindow = fm.contextWindow;
+      if (pm.monthlyTokenBudget === '' && fm.monthlyTokenBudget) pm.monthlyTokenBudget = fm.monthlyTokenBudget;
+      if ((!pm.modality || pm.modality === 'text') && fm.modality) pm.modality = fm.modality;
+      if (!pm.mediaNote && fm.mediaNote) pm.mediaNote = fm.mediaNote;
+    }
+  }
+
+  // 4. Apply
+  try {
+    const counts = applyCatalog(db, primaryCatalog);
+    
+    // Manage Settings
+    if (primarySource === SOURCE_DEFAULT) {
+      setSetting(SETTING_APPLIED_VERSION, primaryCatalog.version);
+      setSetting(SETTING_APPLIED_TIER, primaryCatalog.tier);
+      if (rawDefaultBytes) {
+        setSetting(SETTING_APPLIED_JSON, rawDefaultBytes.toString('utf8'));
+      }
+    } else {
+      setSetting(SETTING_APPLIED_VERSION, primaryCatalog.version);
+      setSetting(SETTING_APPLIED_TIER, primaryCatalog.tier);
+      db.prepare('DELETE FROM settings WHERE key = ?').run(SETTING_APPLIED_JSON);
+    }
+
+    console.log(
+      `[catalog-sync] applied ${primaryCatalog.tier} v${primaryCatalog.version}: ` +
+        `${counts.updated} updated, ${counts.inserted} new, ${counts.removed} removed, ` +
+        `${counts.quirks} quirks` +
+        (counts.skippedUnknownPlatform ? `, ${counts.skippedUnknownPlatform} skipped (unknown platform)` : ''),
+    );
+    
+    setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
+    setSetting(SETTING_LAST_ERROR, '');
+    return { ok: true, action: 'applied', version: primaryCatalog.version, tier: primaryCatalog.tier, counts };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[catalog-sync] apply failed: ${message}`);
     setSetting(SETTING_LAST_ERROR, message);
     return { ok: false, action: 'error', detail: message };
   }
@@ -449,6 +711,7 @@ export function getCachedLicenseStatus(): LicenseStatus | null {
 
 export interface CatalogSyncState {
   baseUrl: string;
+  source: string;
   appliedVersion: string | null;
   appliedTier: string | null;
   lastSyncMs: number | null;
@@ -458,6 +721,7 @@ export interface CatalogSyncState {
 export function getSyncState(): CatalogSyncState {
   return {
     baseUrl: catalogBaseUrl(),
+    source: getSetting(SETTING_CATALOG_SOURCE) || SOURCE_DEFAULT,
     appliedVersion: getSetting(SETTING_APPLIED_VERSION) ?? null,
     appliedTier: getSetting(SETTING_APPLIED_TIER) ?? null,
     lastSyncMs: Number(getSetting(SETTING_LAST_SYNC_MS)) || null,
@@ -503,8 +767,10 @@ export function reapplyCachedCatalog(): { reapplied: boolean; version?: string }
 
 let cancelBootTimer: (() => void) | null = null;
 let cancelInterval: (() => void) | null = null;
+let savedScheduler: Scheduler | null = null;
 
 export function startCatalogSync(scheduler: Scheduler): void {
+  savedScheduler = scheduler;
   if (cancelInterval) return;
   if (process.env.CATALOG_SYNC_DISABLED === '1') {
     console.log('[catalog-sync] disabled via CATALOG_SYNC_DISABLED=1');
@@ -515,9 +781,11 @@ export function startCatalogSync(scheduler: Scheduler): void {
     void refreshLicenseStatus();
     void syncCatalog();
   };
+  
+  const intervalMs = getSyncIntervalMs();
   cancelBootTimer = scheduler.after(BOOT_DELAY_MS, run);
-  cancelInterval = scheduler.every(SYNC_INTERVAL_MS, run);
-  console.log(`[catalog-sync] polling ${catalogBaseUrl()} every ${SYNC_INTERVAL_MS / 3600000}h`);
+  cancelInterval = scheduler.every(intervalMs, run);
+  console.log(`[catalog-sync] polling ${catalogBaseUrl()} every ${intervalMs / 3600000}h`);
 }
 
 export function stopCatalogSync(): void {
@@ -529,4 +797,10 @@ export function stopCatalogSync(): void {
     cancelInterval();
     cancelInterval = null;
   }
+}
+
+export function rescheduleCatalogSync(): void {
+  if (!savedScheduler) return;
+  stopCatalogSync();
+  startCatalogSync(savedScheduler);
 }

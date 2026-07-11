@@ -285,6 +285,41 @@ register(new OpenAICompatProvider({
   baseUrl: 'https://router.bynara.id/v1',
 }));
 
+// ModelScope — OpenAI-compatible (api-inference.modelscope.cn/v1).
+register(new OpenAICompatProvider({
+  platform: 'modelscope',
+  name: 'ModelScope',
+  baseUrl: 'https://api-inference.modelscope.cn/v1',
+}));
+
+// GLHF Chat — OpenAI-compatible (glhf.chat/api/openai/v1).
+register(new OpenAICompatProvider({
+  platform: 'glhf',
+  name: 'GLHF Chat',
+  baseUrl: 'https://glhf.chat/api/openai/v1',
+}));
+
+// Aion Labs — OpenAI-compatible (api.aionlabs.ai/v1).
+register(new OpenAICompatProvider({
+  platform: 'aionlabs',
+  name: 'Aion Labs',
+  baseUrl: 'https://api.aionlabs.ai/v1',
+}));
+
+// Chutes AI — OpenAI-compatible (llm.chutes.ai/v1).
+register(new OpenAICompatProvider({
+  platform: 'chutes',
+  name: 'Chutes AI',
+  baseUrl: 'https://llm.chutes.ai/v1',
+}));
+
+// Grok (xAI) — OpenAI-compatible (api.x.ai/v1).
+register(new OpenAICompatProvider({
+  platform: 'grok',
+  name: 'Grok (xAI)',
+  baseUrl: 'https://api.x.ai/v1',
+}));
+
 // AI Horde — free, community-powered inference (volunteer workers) via an
 // OpenAI-compatible proxy. Dedicated AIHordeProvider (not OpenAICompatProvider)
 // because the proxy is queue-based and diverges from the OpenAI contract:

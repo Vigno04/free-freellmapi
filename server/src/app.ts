@@ -15,7 +15,7 @@ import { mediaRouter } from './routes/media.js';
 import { analyticsRouter } from './routes/analytics.js';
 import { healthRouter } from './routes/health.js';
 import { settingsRouter } from './routes/settings.js';
-import { premiumRouter } from './routes/premium.js';
+import { catalogsRouter } from './routes/catalogs.js';
 import { cacheRouter } from './routes/cache.js';
 import { authRouter } from './routes/auth.js';
 import { docsRouter } from './routes/docs.js';
@@ -78,7 +78,7 @@ export function createApp(config?: Config) {
   app.use('/api/analytics', requireAuth, analyticsRouter);
   app.use('/api/health', requireAuth, healthRouter);
   app.use('/api/settings', requireAuth, settingsRouter);
-  app.use('/api/premium', requireAuth, premiumRouter);
+  app.use('/api/catalogs', requireAuth, catalogsRouter);
   app.use('/api/cache', requireAuth, cacheRouter);
 
   // Static, unauthenticated API reference: GET /v1/docs (viewer) and

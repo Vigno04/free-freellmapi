@@ -4,14 +4,18 @@ import { getSetting, setSetting, getDb } from '../db/index.js';
 import {
   SETTING_LICENSE_KEY,
   SETTING_LICENSE_STATUS,
+  SETTING_CATALOG_SOURCE,
+  SETTING_CATALOG_SYNC_INTERVAL,
+  SETTING_CATALOG_FALLBACK_SOURCES,
   catalogBaseUrl,
   getCachedLicenseStatus,
   getSyncState,
   refreshLicenseStatus,
   syncCatalog,
+  rescheduleCatalogSync,
 } from '../services/catalog-sync.js';
 
-export const premiumRouter = Router();
+export const catalogsRouter = Router();
 
 function maskKey(key: string): string {
   if (key.length <= 10) return key;
@@ -20,28 +24,39 @@ function maskKey(key: string): string {
 
 function statusPayload() {
   const key = getSetting(SETTING_LICENSE_KEY);
+  const db = getDb();
+  const modelsCountRow = db.prepare('SELECT COUNT(*) as c FROM models').get() as { c: number };
+  const mediaCountRow = db.prepare('SELECT COUNT(*) as c FROM media_models').get() as { c: number };
+  const totalModels = (modelsCountRow?.c || 0) + (mediaCountRow?.c || 0);
+  const interval = getSetting(SETTING_CATALOG_SYNC_INTERVAL) || '12h';
+  const fallbacksStr = getSetting(SETTING_CATALOG_FALLBACK_SOURCES) || '';
+  const fallbackSources = fallbacksStr.split(',').filter(Boolean);
+
   return {
     hasKey: Boolean(key),
     maskedKey: key ? maskKey(key) : null,
     license: getCachedLicenseStatus(),
     catalog: getSyncState(),
+    totalModels,
+    interval,
+    fallbackSources,
     // Where "Go Premium" / "recover key" links point. Overridable for forks.
     siteUrl: (process.env.PREMIUM_SITE_URL ?? 'https://freellmapi.co').replace(/\/$/, ''),
   };
 }
 
-/** GET /api/premium — everything the Premium page renders. */
-premiumRouter.get('/', (_req: Request, res: Response) => {
+/** GET /api/catalogs — everything the Catalog page renders. */
+catalogsRouter.get('/', (_req: Request, res: Response) => {
   res.json(statusPayload());
 });
 
 /**
- * POST /api/premium/key { key } — activate a license key.
+ * POST /api/catalogs/key { key } — activate a license key.
  * Validates against the catalog service first; only a key the service accepts
  * is stored. A live-tier sync is kicked off right away so the upgrade is
  * visible within seconds, not at the next 12h poll.
  */
-premiumRouter.post('/key', async (req: Request, res: Response) => {
+catalogsRouter.post('/key', async (req: Request, res: Response) => {
   const key = typeof req.body?.key === 'string' ? req.body.key.trim() : '';
   if (key.length < 8) {
     res.status(400).json({ error: 'Enter the license key from your purchase email.' });
@@ -79,8 +94,8 @@ premiumRouter.post('/key', async (req: Request, res: Response) => {
   res.json({ ...statusPayload(), sync });
 });
 
-/** DELETE /api/premium/key — deactivate locally (the purchase itself is untouched). */
-premiumRouter.delete('/key', async (_req: Request, res: Response) => {
+/** DELETE /api/catalogs/key — deactivate locally (the purchase itself is untouched). */
+catalogsRouter.delete('/key', async (_req: Request, res: Response) => {
   const db = getDb();
   db.prepare('DELETE FROM settings WHERE key IN (?, ?)').run(SETTING_LICENSE_KEY, SETTING_LICENSE_STATUS);
   // Drop back to the free tier in the background; failure just means the next
@@ -89,19 +104,43 @@ premiumRouter.delete('/key', async (_req: Request, res: Response) => {
   res.json(statusPayload());
 });
 
-/** POST /api/premium/sync — manual "check for updates now". */
-premiumRouter.post('/sync', async (_req: Request, res: Response) => {
+/** POST /api/catalogs/sync — manual "check for updates now". */
+catalogsRouter.post('/sync', async (req: Request, res: Response) => {
+  const source = typeof req.body?.source === 'string' ? req.body.source.trim() : null;
+  if (source) {
+    setSetting(SETTING_CATALOG_SOURCE, source);
+  }
+  
   await refreshLicenseStatus();
   const sync = await syncCatalog(true);
   res.json({ ...statusPayload(), sync });
 });
 
+/** POST /api/catalogs/fallbacks — set hybrid fill fallbacks. */
+catalogsRouter.post('/fallbacks', async (req: Request, res: Response) => {
+  const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
+  setSetting(SETTING_CATALOG_FALLBACK_SOURCES, sources.join(','));
+  
+  const sync = await syncCatalog(true);
+  res.json({ ...statusPayload(), sync });
+});
+
+/** POST /api/catalogs/interval — set background update frequency. */
+catalogsRouter.post('/interval', (req: Request, res: Response) => {
+  const interval = typeof req.body?.interval === 'string' ? req.body.interval.trim() : '';
+  if (['12h', '24h', '72h', 'weekly'].includes(interval)) {
+    setSetting(SETTING_CATALOG_SYNC_INTERVAL, interval);
+    rescheduleCatalogSync();
+  }
+  res.json(statusPayload());
+});
+
 /**
- * POST /api/premium/portal — Stripe Billing Portal session for the stored key.
+ * POST /api/catalogs/portal — Stripe Billing Portal session for the stored key.
  * This is how an annual subscriber cancels, updates a card, or pulls invoices,
  * entirely self-serve.
  */
-premiumRouter.post('/portal', async (_req: Request, res: Response) => {
+catalogsRouter.post('/portal', async (_req: Request, res: Response) => {
   const key = getSetting(SETTING_LICENSE_KEY);
   if (!key) {
     res.status(400).json({ error: 'No license key configured.' });
