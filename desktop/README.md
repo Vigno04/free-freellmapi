@@ -1,6 +1,6 @@
-# FreeLLMAPI Desktop
+# Free-FreeLLMAPI Desktop
 
-Lean Electron menu-bar app for [freellmapi](https://github.com/tashfeenahmed/freellmapi):
+Lean Electron menu-bar app for [free-freellmapi](https://github.com/Vigno04/free-freellmapi):
 runs the whole router locally on `127.0.0.1:31415`, with a dark-glass tray
 popover (live 24h request chart, quick stats, copy URL/key) and the full
 dashboard in a native-feeling window.

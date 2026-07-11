@@ -23,7 +23,7 @@ export const openapiSpec = {
       'OpenAI-compatible proxy that aggregates free LLM provider tiers behind a single /v1 endpoint. ' +
       'A router picks an available model per request and fails over when a provider is rate-limited. ' +
       'The same /v1 router also speaks the OpenAI Responses API and the Anthropic Messages API.',
-    license: { name: 'MIT', url: 'https://github.com/tashfeenahmed/freellmapi/blob/main/LICENSE' },
+    license: { name: 'MIT', url: 'https://github.com/Vigno04/free-freellmapi/blob/main/LICENSE' },
   },
   servers: [
     { url: '/v1', description: 'This proxy instance' },

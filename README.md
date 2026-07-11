@@ -1,22 +1,25 @@
 <div align="center">
 
-# FreeLLMAPI
+# Free-FreeLLMAPI
 
-**One OpenAI-compatible endpoint. 18 free LLM providers. 161 free models. ~1.7B tokens per month.**
+**One OpenAI-compatible endpoint. More than 18 free LLM providers. 161 free models. ~1.7B tokens per month.**
 
-Aggregate the free tiers from Google, Groq, Cerebras, NVIDIA, Mistral, OpenRouter, GitHub Models, Cohere, Cloudflare, HuggingFace, Z.ai (Zhipu), Ollama, Kilo, Pollinations, LLM7, OVH AI Endpoints, OpenCode Zen, and AI Horde, plus custom OpenAI-compatible chat, embedding, image, and audio endpoints, behind a single `/v1` API. Keys are stored encrypted. A router picks the best available model for each request, falls over to the next provider when one is rate-limited, and tracks per-key usage so you stay under every free-tier cap.
+A Fork of FreeLLMAPI with more options for lists and the ability to add new feature in the future.
+Aggregate the free tiers from a ton of different provider, plus custom OpenAI-compatible chat, embedding, image, and audio endpoints, behind a single `/v1` API. Keys are stored encrypted. A router picks the best available model for each request, falls over to the next provider when one is rate-limited, and tracks per-key usage so you stay under every free-tier cap.
 
-[![CI](https://github.com/tashfeenahmed/freellmapi/actions/workflows/ci.yml/badge.svg)](https://github.com/tashfeenahmed/freellmapi/actions/workflows/ci.yml)
-[![GitHub stars](https://img.shields.io/github/stars/tashfeenahmed/freellmapi?style=flat&logo=github&color=yellow)](https://github.com/tashfeenahmed/freellmapi/stargazers)
+[![CI](https://github.com/Vigno04/free-freellmapi/actions/workflows/ci.yml/badge.svg)](https://github.com/Vigno04/free-freellmapi/actions/workflows/ci.yml)
+[![GitHub stars](https://img.shields.io/github/stars/Vigno04/free-freellmapi?style=flat&logo=github&color=yellow)](https://github.com/Vigno04/free-freellmapi/stargazers)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](./LICENSE)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](#contributing)
-[![Docker image](https://img.shields.io/badge/ghcr.io-freellmapi-2496ED?logo=docker&logoColor=white)](https://github.com/tashfeenahmed/freellmapi/pkgs/container/freellmapi)
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/tashfeenahmed/freellmapi)
+[![Docker image](https://img.shields.io/badge/ghcr.io-freellmapi-2496ED?logo=docker&logoColor=white)](https://github.com/Vigno04/free-freellmapi/pkgs/container/freellmapi)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Vigno04/free-freellmapi)
 
-**[freellmapi.co](https://freellmapi.co)** · browse all 161 free models on the live catalog
+The app is compatible with different list browse them below:
 
-Your router updates its own model catalog. Free installs get each new model 30 days after it ships;
-**[Premium gets it the day it lands, and is 79 models ahead right now](https://freellmapi.co/?utm_source=github&utm_medium=readme#pricing)** ($19/yr, cancel anytime).
+**[freellmapi.co](https://freellmapi.co)** · browse all 161 free models on the live catalog with a faster updating paid tier
+**[freellm.net](https://freellm.net/)** · More than 500 free models with no paid tier
+
+Your router updates its own model catalog at a chosen interval.
 
 ![Fallback chain with per-provider token budget](repo-assets/fallback-chain.png)
 
@@ -35,7 +38,7 @@ Your router updates its own model catalog. Free installs get each new model 30 d
 - [Docker](#docker)
 - [Desktop app](#desktop-app)
 - [Languages](#languages)
-- [Premium (live catalog)](#premium-live-catalog)
+
 - [Using the API](#using-the-api)
 - [Screenshots](#screenshots)
 - [How it works](#how-it-works)
@@ -47,51 +50,16 @@ Your router updates its own model catalog. Free installs get each new model 30 d
 
 ## Why this exists
 
-Every serious AI lab now offers a free tier — a few million tokens a month, a few thousand requests a day. On its own each tier is a toy. Stacked together, they add up to roughly **1.7 billion tokens per month** of working inference capacity, across 160+ models from small-and-fast to reasonably capable.
+Every serious AI lab now offers a free tier — a few million tokens a month, a few thousand requests a day. On its own each tier is a toy. Stacked together, they add up to more than **1.7 billion tokens per month** of working inference capacity, across 160+ models from small-and-fast to reasonably capable.
 
 The problem is that stacking them by hand is painful: eighteen different SDKs, eighteen different rate limits, eighteen places a request can fail. FreeLLMAPI collapses that into one OpenAI-compatible endpoint. Point any OpenAI client library at your local server, and it routes transparently across whichever providers you've added keys for.
 
-And the free-tier landscape shifts weekly: providers launch models, retire them, and change quotas without notice. FreeLLMAPI tracks all of that for you. The router pulls a signed model catalog from [freellmapi.co](https://freellmapi.co) on its own, so your install keeps up without a `git pull`. See [Premium (live catalog)](#premium-live-catalog) for how fast it keeps up.
+And the free-tier landscape shifts weekly: providers launch models, retire them, and change quotas without notice.
+So that is why this automatically pulls new list at minimum every 12hr
 
 ## Supported providers
 
-<table>
-<tr>
-<td align="center" width="180"><a href="https://ai.google.dev"><b>Google</b><br/>Gemini 2.5 Flash · 3.x previews</a></td>
-<td align="center" width="180"><a href="https://groq.com"><b>Groq</b><br/>Llama 3.3, Llama 4, GPT-OSS, Qwen3</a></td>
-<td align="center" width="180"><a href="https://cerebras.ai"><b>Cerebras</b><br/>Qwen3 235B</a></td>
-<td align="center" width="180"><a href="https://opencode.ai/zen"><b>OpenCode Zen</b><br/>DeepSeek V4 Flash · Nemotron (promo)</a></td>
-</tr>
-<tr>
-<td align="center"><a href="https://mistral.ai"><b>Mistral</b><br/>Large 3 · Medium 3.5 · Codestral · Devstral</a></td>
-<td align="center"><a href="https://openrouter.ai"><b>OpenRouter</b><br/>21 free-tier models</a></td>
-<td align="center"><a href="https://github.com/marketplace/models"><b>GitHub Models</b><br/>GPT-4.1 · GPT-4o</a></td>
-<td align="center"><a href="https://developers.cloudflare.com/workers-ai"><b>Cloudflare</b><br/>Kimi K2 · GLM-4.7 · GPT-OSS · Granite 4</a></td>
-</tr>
-<tr>
-<td align="center"><a href="https://cohere.com"><b>Cohere</b><br/>Command R+ · Command-A (trial)</a></td>
-<td align="center"><a href="https://docs.z.ai"><b>Z.ai (Zhipu)</b><br/>GLM-4.5 · GLM-4.7 Flash</a></td>
-<td align="center"><a href="https://build.nvidia.com"><b>NVIDIA</b><br/>NIM · 40 RPM free (eval-only ToS)</a></td>
-<td align="center"><a href="https://huggingface.co/docs/inference-providers"><b>HuggingFace</b><br/>Router → DeepSeek V4 · Kimi K2.6 · Qwen3</a></td>
-</tr>
-<tr>
-<td align="center"><a href="https://ollama.com"><b>Ollama Cloud</b><br/>GLM-4.7 · Kimi K2 · gpt-oss · Qwen3</a></td>
-<td align="center"><a href="https://kilo.ai"><b>Kilo Gateway</b><br/>:free routes (anon ok)</a></td>
-<td align="center"><a href="https://pollinations.ai"><b>Pollinations</b><br/>GPT-OSS 20B (anon ok)</a></td>
-<td align="center"><a href="https://llm7.io"><b>LLM7</b><br/>GPT-OSS · Llama 3.1 · GLM (anon ok)</a></td>
-</tr>
-<tr>
-<td align="center"><a href="https://endpoints.ai.cloud.ovh.net"><b>OVH AI Endpoints</b><br/>Qwen3.5 397B · GPT-OSS · Llama 3.3 (anon ok)</a></td>
-<td align="center"><a href="https://router.bynara.id"><b>NaraRouter</b><br/>Mistral Large · Mistral Medium · Tencent Hy3</a></td>
-<td align="center"><a href="https://aihorde.net"><b>AI Horde</b><br/>Community Llama · Gemma · Cydonia (anon ok, slow)</a></td>
-<td align="center"></td>
-<td align="center"></td>
-</tr>
-</table>
-
-Plus a **custom** provider — point chat, embedding, image, or audio models at any OpenAI-compatible endpoint (llama.cpp, LM Studio, vLLM, a local Ollama, or a remote gateway) from the Keys page.
-
-The full, always-current list lives at **[freellmapi.co/models](https://freellmapi.co/models.html)** with per-model rate limits, context windows, and free-token budgets.
+The list changes by each provider so find them in the respective links
 
 ## Features
 
@@ -100,7 +68,7 @@ The full, always-current list lives at **[freellmapi.co/models](https://freellma
 - **Editor autocomplete** — `POST /v1/completions` translates legacy prompt/suffix requests into the same router, so VS Code ghost-text clients such as Continue can use FreeLLMAPI for inline suggestions.
 - **Anthropic Messages API** — `POST /v1/messages` (plus `/v1/messages/count_tokens`) speaks Anthropic's wire format over the same router, so **Claude Code** and the official Anthropic SDKs run against your free pool. `GET /v1/models` is content-negotiated (Anthropic shape when the client sends `anthropic-version`, OpenAI shape otherwise), and Claude families (`opus` / `sonnet` / `haiku` / `default`) map to `auto` or a pinned model on the Keys page. See [Anthropic / Claude clients](#anthropic--claude-clients).
 - **Image generation & text-to-speech** — `POST /v1/images/generations` and `POST /v1/audio/speech` route across the providers that serve media models, including custom OpenAI-compatible media endpoints. Browse and toggle them on the dashboard's **Models → Image / Audio** tabs.
-- **Self-updating model catalog** — the router syncs a signed catalog from freellmapi.co twice a day: new models, quota changes, and provider quirk fixes land in your install automatically. See [Premium (live catalog)](#premium-live-catalog).
+- **Self-updating model catalog** — the router syncs the catalog twice a day at max: new models, quota changes, and provider quirk fixes land in your install automatically.
 - **Streaming and non-streaming** — Server-Sent Events for `stream: true`, JSON response otherwise. Every provider adapter implements both.
 - **Tool calling** — OpenAI-style `tools` / `tool_choice` requests are passed through, and assistant `tool_calls` + `tool` role follow-up messages round-trip across providers.
 - **Embeddings** — `/v1/embeddings` with family-based routing, including custom OpenAI-compatible embedding endpoints: failover only ever happens between providers serving the *same* model (vectors from different models are incompatible), never across models. See [Embeddings](#embeddings).
@@ -116,19 +84,9 @@ The full, always-current list lives at **[freellmapi.co/models](https://freellma
 - **Context handoff on model switch** — Optional. When a session falls over to a different model, injects one compact system message so the new model knows it is continuing an existing task. Disabled by default; enable with `FREELLMAPI_CONTEXT_HANDOFF=on_model_switch`. See [Context Handoff](#context-handoff).
 - **Runs anywhere Node 20+ runs** — Windows, macOS, Linux servers, or a small ARM SBC (Raspberry Pi included). ~40 MB RSS at idle behind PM2 / systemd / whatever supervisor you prefer.
 
-## Not yet supported
-
-The scope is deliberately narrow. If a feature isn't on this list and isn't below, assume it isn't there yet.
-
-- **Moderation** (`/v1/moderations`)
-- **`n > 1`** (multiple completions per request)
-- **Per-user billing / multi-tenant auth** — single-user by design
-
-PRs that add any of these are very welcome. See [Contributing](#contributing).
-
 ## Quick start
 
-**One-liner** (Docker required — sets up `~/freellmapi`, generates an encryption key, pulls the image, and starts the container):
+**One-liner** (Docker required — sets up `~/free-freellmapi`, generates an encryption key, pulls the image, and starts the container):
 
 ```bash
 curl -fsSL https://freellmapi.co/install.sh | bash
@@ -136,7 +94,7 @@ curl -fsSL https://freellmapi.co/install.sh | bash
 
 Prefer to read before you pipe to bash? [The script is here](https://freellmapi.co/install.sh). Re-running it is safe: your `.env` (and encryption key) is preserved and the container updates to `:latest`. Override the defaults with `FREELLMAPI_DIR`, `PORT`, or `HOST_BIND` env vars.
 
-On Windows, the easiest path is the desktop **[`.exe` installer from Releases](https://github.com/tashfeenahmed/freellmapi/releases/latest)** (below); the Docker steps work in WSL or any bash shell.
+On Windows, the easiest path is the desktop **[`.exe` installer from Releases](https://github.com/Vigno04/free-freellmapi/releases/latest)** (below); the Docker steps work in WSL or any bash shell.
 
 **Or manually with Docker Compose.** It runs the API and dashboard together on port 3001 and persists SQLite in a named volume.
 
@@ -144,8 +102,8 @@ On Windows, the easiest path is the desktop **[`.exe` installer from Releases](h
 
 *On macOS / Linux (Bash):*
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
-cd freellmapi
+git clone https://github.com/Vigno04/free-freellmapi.git
+cd free-freellmapi
 
 # Generate an encryption key for at-rest key storage
 ENCRYPTION_KEY="$(openssl rand -hex 32)"
@@ -156,8 +114,8 @@ docker compose up -d
 
 *On Windows (PowerShell):*
 ```powershell
-git clone https://github.com/tashfeenahmed/freellmapi.git
-cd freellmapi
+git clone https://github.com/Vigno04/free-freellmapi.git
+cd free-freellmapi
 
 $Bytes = New-Object Byte[] 32
 [Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($Bytes)
@@ -184,8 +142,8 @@ Your fresh install ships with the free catalog snapshot (82 models today) and ke
 
 *On macOS / Linux (Bash):*
 ```bash
-git clone https://github.com/tashfeenahmed/freellmapi.git
-cd freellmapi
+git clone https://github.com/Vigno04/free-freellmapi.git
+cd free-freellmapi
 npm install
 ENCRYPTION_KEY="$(node -e 'console.log(require("crypto").randomBytes(32).toString("hex"))')"
 printf "ENCRYPTION_KEY=%s\nPORT=3001\n" "$ENCRYPTION_KEY" > .env
@@ -194,8 +152,8 @@ npm run dev
 
 *On Windows (PowerShell):*
 ```powershell
-git clone https://github.com/tashfeenahmed/freellmapi.git
-cd freellmapi
+git clone https://github.com/Vigno04/free-freellmapi.git
+cd free-freellmapi
 npm install
 $ENCRYPTION_KEY = node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 "ENCRYPTION_KEY=$ENCRYPTION_KEY`nPORT=3001" | Out-File -Encoding utf8 .env
@@ -264,7 +222,7 @@ node server/dist/index.js     # server + dashboard both served on :3001
 FreeLLMAPI publishes a single production image that contains the Express server and the built React dashboard:
 
 ```bash
-docker pull ghcr.io/tashfeenahmed/freellmapi:latest   # or pin a release, e.g. :v1.2.3
+docker pull ghcr.io/Vigno04/free-freellmapi:latest   # or pin a release, e.g. :v1.2.3
 ```
 
 The image is multi-arch (`linux/amd64` + `linux/arm64`, so it runs on a Raspberry Pi). Published tags: `latest` (default branch), `v*.*.*` (git release tags), and `sha-<commit>`.
@@ -309,7 +267,7 @@ request stats.
 
 ![FreeLLMAPI desktop app](repo-assets/desktop.png)
 
-**[Download from Releases](https://github.com/tashfeenahmed/freellmapi/releases/latest)** — the macOS `.dmg` and the Windows `.exe` installer are built and attached to every release by the [`desktop-release`](.github/workflows/desktop-release.yml) workflow. Or build it from this repo in a few minutes:
+**[Download from Releases](https://github.com/Vigno04/free-freellmapi/releases/latest)** — the macOS `.dmg` and the Windows `.exe` installer are built and attached to every release by the [`desktop-release`](.github/workflows/desktop-release.yml) workflow. Or build it from this repo in a few minutes:
 
 > **Note for Windows users building from source:** Building the desktop app requires compiling native SQLite modules for Electron. You must have [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) installed (specifically the "Desktop development with C++" workload) and Python installed before running `npm install`.
 
@@ -396,46 +354,7 @@ FreeLLMAPI is local-first and single-user by design. Your provider keys stay in
 your SQLite database, encrypted at rest, and requests go from your machine to the
 upstream providers you enabled.
 
-## Premium (live catalog)
 
-The router keeps its model catalog fresh on its own: it pulls a signed catalog
-from [freellmapi.co](https://freellmapi.co) twice a day and applies new models,
-quota changes, and provider quirk fixes to your local DB. Your own
-enable/disable choices and custom providers are never touched, and every
-download is verified against a pinned Ed25519 key before it is applied.
-
-The catalog comes in two feeds:
-
-| | Free | Premium |
-|---|---|---|
-| Price | $0, forever | **$19/yr** or **$49 lifetime** |
-| Models served today (July 2026) | 82 | **161** |
-| New free models | 30 days after each one ships | **the day it ships** |
-| Quota changes and quirk fixes | on the same 30-day trail | within 2-3 days |
-| Activation | nothing to do | one key, all your devices |
-
-The gap is not hypothetical. Right now the live feed is **79 models ahead** of
-free installs, including Kimi K2.7 Code, GLM-5.2, MiniMax M3, Qwen3.5 397B, and
-Nemotron 3 Ultra 550B with a 1M-token context window. Each of those reaches free
-installs about a month after it shipped; Premium routers were already serving
-them on day one. Browse exactly what you're missing at
-**[freellmapi.co/models](https://freellmapi.co/models.html)**.
-
-Thirty days is a long time in this market. When a provider launches a strong
-new free model, quietly tightens a quota, or breaks a wire format, live-feed
-routers are patched within days while free installs wait for the model to age
-in. If you use your router every day, Premium is the difference between riding
-the free-tier wave and reading about it.
-
-**[Go live at freellmapi.co →](https://freellmapi.co/?utm_source=github&utm_medium=readme#pricing)**
-
-- $19/year or $49 once, lifetime. Stripe checkout; cancel anytime, self-serve.
-- One `fla_` key covers every router you run: desktop, homelab, Raspberry Pi.
-- Activate in the dashboard under **Premium**; cancel or manage billing
-  self-serve at [freellmapi.co/manage](https://freellmapi.co/manage).
-- The router itself stays MIT-licensed and fully free, forever. Premium is only
-  the live feed, and it's what funds the daily model testing and catalog
-  maintenance that keep both tiers working.
 
 The catalog server never sees your prompts, completions, or provider keys — the
 router stays fully self-hosted either way.
@@ -885,7 +804,7 @@ Removed since the April 2026 review: Hugging Face, Moonshot, and MiniMax direct 
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/chart?repos=tashfeenahmed/freellmapi&type=date&legend=top-left)](https://www.star-history.com/?repos=tashfeenahmed%2Ffreellmapi&type=date&legend=top-left)
+[![Star History Chart](https://api.star-history.com/chart?repos=Vigno04/free-freellmapi&type=date&legend=top-left)](https://www.star-history.com/?repos=Vigno04%2Ffree-freellmapi&type=date&legend=top-left)
 
 ## License
 

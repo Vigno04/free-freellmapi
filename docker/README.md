@@ -111,7 +111,7 @@ Example `freellmapi.config.json`:
 Images are published to GitHub Container Registry:
 
 ```bash
-docker pull ghcr.io/tashfeenahmed/freellmapi:latest
+docker pull ghcr.io/Vigno04/free-freellmapi:latest
 ```
 
 The Docker workflow builds pull requests without pushing. After this repository receives the workflow on `main`, pushes to `main` and version tags publish images to GHCR automatically.
