@@ -66,10 +66,10 @@ export interface RoutingData {
 // A merged row: fallback-chain metadata + live bandit scores.
 export type Row = FallbackEntry & Partial<RoutingScore>
 
-export interface TokenUsageData {
+export type TokenUsageData = {
   totalBudget: number
   totalUsed: number
-  models: { displayName: string; platform: string; modelId?: string; budget: number; fullBudget?: number; used?: number; isEstimated?: boolean; creditBudget?: string | null }[]
+  models: { displayName: string; platform: string; modelId?: string; budget: number; fullBudget?: number; used?: number; isEstimated?: boolean }[]
 }
 
 // Custom endpoints all share the generic 'custom' platform id, so show the

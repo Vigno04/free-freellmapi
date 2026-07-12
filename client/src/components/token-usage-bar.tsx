@@ -34,9 +34,8 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
     return () => ro.disconnect()
   }, [models.length])
 
-  const creditModels = models.filter(m => !!m.creditBudget)
-  const classicModels = models.filter(m => !m.isEstimated && !m.creditBudget)
-  const estimatedModels = models.filter(m => m.isEstimated && !m.creditBudget)
+  const classicModels = models.filter(m => !m.isEstimated)
+  const estimatedModels = models.filter(m => m.isEstimated)
   const classicBudget = classicModels.reduce((acc, m) => acc + m.budget, 0)
   const classicUsed = classicModels.reduce((acc, m) => acc + (m.used ?? 0), 0)
   const classicRemaining = Math.max(0, classicBudget - classicUsed)
@@ -116,7 +115,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
               <span className="font-mono text-muted-foreground">{formatTokens(m.fullRemainingTokens)}</span>
             </div>
           ))}
-          {[...estimatedModels, ...creditModels].map((m, i) => (
+          {estimatedModels.map((m, i) => (
             <div key={`cr-${i}`} className="flex items-center gap-2 min-w-0">
               <span
                 className="size-2 rounded-sm flex-shrink-0"
@@ -124,7 +123,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
               />
               <span className="truncate">{m.displayName}</span>
               <span className="flex-1" />
-              <span className="font-mono text-muted-foreground">{m.creditBudget || ((m.fullBudget ?? 0) > 0 ? `~${formatTokens(m.fullBudget ?? 0)}` : 'No limits')}</span>
+              <span className="font-mono text-muted-foreground">{((m.fullBudget ?? 0) > 0 ? `~${formatTokens(m.fullBudget ?? 0)}` : 'No limits')}</span>
             </div>
           ))}
         </div>

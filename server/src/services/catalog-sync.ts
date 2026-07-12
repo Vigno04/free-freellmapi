@@ -439,7 +439,6 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     'chutes-ai': 'chutes',
     'grok-(xai)': 'grok',
     'deepseek': 'deepseek',
-    'xai': 'xai',
     'nscale': 'nscale',
     'nebius': 'nebius',
     'alibaba-cloud-model-studio': 'alibaba',
@@ -560,7 +559,7 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     if (slug) allProviders.add(slug);
   }
 
-  const defaultLimitsBySlug: Record<string, { rpm: number | null, rpd: number | null, tpm: number | null, tpd: number | null, credits: number | null }> = {};
+  const defaultLimitsBySlug: Record<string, { rpm: number | null, rpd: number | null, tpm: number | null, tpd: number | null }> = {};
   const modelsByProvider: Record<string, string[]> = {};
 
   if (allProviders.size > 0) {
@@ -574,14 +573,12 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
         const rpdMatch = text.match(/(\d+(?:,\d+)?)\s*(?:RPD|req\/day|requests? per day)/i);
         const tpmMatch = text.match(/(\d+(?:,\d+)?)\s*TPM/i);
         const tpdMatch = text.match(/(\d+(?:,\d+)?)\s*TPD/i);
-        const creditsMatch = text.match(/\$(\d+(?:,\d+)?(?:\.\d+)?)\s*(?:of\s*)?credit/i) || text.match(/credit.*?\$(\d+(?:,\d+)?(?:\.\d+)?)/i);
         
         defaultLimitsBySlug[slug] = {
           rpm: rpmMatch ? parseInt(rpmMatch[1].replace(/,/g, ''), 10) : null,
           rpd: rpdMatch ? parseInt(rpdMatch[1].replace(/,/g, ''), 10) : null,
           tpm: tpmMatch ? parseInt(tpmMatch[1].replace(/,/g, ''), 10) : null,
           tpd: tpdMatch ? parseInt(tpdMatch[1].replace(/,/g, ''), 10) : null,
-          credits: creditsMatch ? parseFloat(creditsMatch[1].replace(/,/g, '')) : null,
         };
 
         const providerModels: string[] = [];
@@ -648,9 +645,6 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     if (def) {
       if (lim && lim.rpm === null && lim.rpd === null && lim.tpm === null && lim.tpd === null) {
         models[i].limits = { rpm: def.rpm, rpd: def.rpd, tpm: def.tpm, tpd: def.tpd };
-      }
-      if (def.credits !== null && !models[i].monthlyTokenBudget) {
-        models[i].monthlyTokenBudget = `$${def.credits.toFixed(2)} Credit`;
       }
     }
   }

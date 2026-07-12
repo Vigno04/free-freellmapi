@@ -350,12 +350,6 @@ register(new OpenAICompatProvider({
   baseUrl: 'https://api.deepseek.com/v1',
 }));
 
-// xAI — OpenAI-compatible
-register(new OpenAICompatProvider({
-  platform: 'xai',
-  name: 'xAI',
-  baseUrl: 'https://api.x.ai/v1',
-}));
 
 // NScale — OpenAI-compatible
 register(new OpenAICompatProvider({
@@ -376,6 +370,7 @@ register(new OpenAICompatProvider({
   platform: 'alibaba',
   name: 'Alibaba Cloud',
   baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+  validateUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
 }));
 
 // AI21 Labs — OpenAI-compatible
@@ -441,6 +436,7 @@ export function resolveProvider(platform: Platform, baseUrl?: string | null): Ba
         platform: 'alibaba',
         name: 'Alibaba Cloud',
         baseUrl: trimmed,
+        validateUrl: `${trimmed}/chat/completions`,
       });
     }
   }

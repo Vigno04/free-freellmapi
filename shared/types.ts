@@ -108,7 +108,6 @@ export type Platform =
   | 'chutes'
   | 'grok'
   | 'deepseek'
-  | 'xai'
   | 'nscale'
   | 'nebius'
   | 'alibaba'

@@ -297,40 +297,16 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
   `).all() as { platform: string }[];
   const platformSet = new Set(platforms.map(p => p.platform));
 
-  // Check if there is an active profile
-  const settingRow = db.prepare(`SELECT value FROM settings WHERE key = 'active_profile_id'`).get() as { value: string } | undefined;
-  const activeProfileId = settingRow ? (parseInt(settingRow.value) || null) : null;
-
-  // Verify active profile still exists
-  const activeProfile = activeProfileId
-    ? db.prepare('SELECT id FROM profiles WHERE id = ?').get(activeProfileId) as any
-    : null;
-
-  let rawModels: { model_db_id: number; platform: string; model_id: string; display_name: string; monthly_token_budget: string; priority: number; enabled: number; rpm_limit: number | null; rpd_limit: number | null; tpm_limit: number | null; tpd_limit: number | null }[];
-
-  if (activeProfile) {
-    // Profile mode: use profile_models chain (all models in profile, checked against enabled)
-    rawModels = db.prepare(`
-      SELECT m.id as model_db_id, m.platform, m.model_id, m.display_name, m.monthly_token_budget,
-             pm.priority, pm.enabled,
-             m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit
-      FROM profile_models pm
-      JOIN models m ON m.id = pm.model_db_id
-      WHERE pm.profile_id = ? AND m.enabled = 1
-      ORDER BY pm.priority ASC
-    `).all(activeProfileId) as any[];
-  } else {
-    // Default mode: use fallback_config (only include enabled models)
-    rawModels = db.prepare(`
-      SELECT m.id as model_db_id, m.platform, m.model_id, m.display_name, m.monthly_token_budget,
-             fc.priority, fc.enabled,
-             m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit
-      FROM fallback_config fc
-      JOIN models m ON m.id = fc.model_db_id
-      WHERE m.enabled = 1
-      ORDER BY fc.priority ASC
-    `).all() as any[];
-  }
+  // Default mode: use fallback_config (only include enabled models)
+  const rawModels = db.prepare(`
+    SELECT m.id as model_db_id, m.platform, m.model_id, m.display_name, m.monthly_token_budget,
+           fc.priority, fc.enabled,
+           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit
+    FROM fallback_config fc
+    JOIN models m ON m.id = fc.model_db_id
+    WHERE m.enabled = 1
+    ORDER BY fc.priority ASC
+  `).all() as any[];
 
   // Build per-model breakdown (only platforms with keys), preserving enabled state
   const usageRows = db.prepare(`
@@ -363,13 +339,10 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
       stats.count += 1;
       platformStats.set(m.platform, stats);
       
-      const creditMatch = m.monthly_token_budget?.match(/\$(\d+(?:,\d+)?(?:\.\d+)?)\s*Credit/i);
-      const creditBudget = creditMatch ? m.monthly_token_budget : null;
-      
-      return { m, budget, isEstimated: est.isEstimated, creditBudget };
+      return { m, budget, isEstimated: est.isEstimated };
     });
 
-  const modelBudgets = rawModelBudgets.map(({ m, budget, isEstimated, creditBudget }) => {
+  const modelBudgets = rawModelBudgets.map(({ m, budget, isEstimated }) => {
     const stats = platformStats.get(m.platform)!;
     // Divide the platform's max budget by its model count to prevent double-counting
     const sharedBudget = stats.count > 0 ? stats.maxBudget / stats.count : budget;
@@ -381,7 +354,6 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
       modelId: m.model_id,
       budget: Math.round(sharedBudget),
       fullBudget: stats.maxBudget,
-      creditBudget,
       isEstimated,
       used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
       enabled: m.enabled === 1,
