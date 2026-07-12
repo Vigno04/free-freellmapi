@@ -165,6 +165,17 @@ export const platformColors: Record<string, string> = {
   ainative:    '#22c55e',
   nara:         '#2563eb',
   aihorde:     '#dc2626',
+  modelscope:  '#8b5cf6',
+  glhf:        '#f59e0b',
+  aionlabs:    '#10b981',
+  chutes:      '#3b82f6',
+  grok:        '#000000',
+  deepseek:    '#1d4ed8',
+  xai:         '#000000',
+  nscale:      '#84cc16',
+  nebius:      '#6366f1',
+  alibaba:     '#f97316',
+  ai21:        '#0284c7',
 }
 
 // ── Grouped (unified) rendering ──────────────────────────────────────────────
