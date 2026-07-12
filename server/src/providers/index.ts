@@ -320,6 +320,48 @@ register(new OpenAICompatProvider({
   baseUrl: 'https://api.x.ai/v1',
 }));
 
+// DeepSeek — OpenAI-compatible
+register(new OpenAICompatProvider({
+  platform: 'deepseek',
+  name: 'DeepSeek',
+  baseUrl: 'https://api.deepseek.com/v1',
+}));
+
+// xAI — OpenAI-compatible
+register(new OpenAICompatProvider({
+  platform: 'xai',
+  name: 'xAI',
+  baseUrl: 'https://api.x.ai/v1',
+}));
+
+// NScale — OpenAI-compatible
+register(new OpenAICompatProvider({
+  platform: 'nscale',
+  name: 'NScale',
+  baseUrl: 'https://inference.api.nscale.com/v1',
+}));
+
+// Nebius — OpenAI-compatible
+register(new OpenAICompatProvider({
+  platform: 'nebius',
+  name: 'Nebius',
+  baseUrl: 'https://api.studio.nebius.com/v1',
+}));
+
+// Alibaba Cloud Model Studio — OpenAI-compatible
+register(new OpenAICompatProvider({
+  platform: 'alibaba',
+  name: 'Alibaba Cloud',
+  baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1',
+}));
+
+// AI21 Labs — OpenAI-compatible
+register(new OpenAICompatProvider({
+  platform: 'ai21',
+  name: 'AI21 Labs',
+  baseUrl: 'https://api.ai21.com/studio/v1',
+}));
+
 // AI Horde — free, community-powered inference (volunteer workers) via an
 // OpenAI-compatible proxy. Dedicated AIHordeProvider (not OpenAICompatProvider)
 // because the proxy is queue-based and diverges from the OpenAI contract:

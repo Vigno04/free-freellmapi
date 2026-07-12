@@ -15,6 +15,37 @@ import { getPenaltyInspector } from '../services/penalty-inspector.js';
 
 export const fallbackRouter = Router();
 
+let cachedMedianTokens = 0;
+let lastMedianUpdate = 0;
+
+function getMedianTokensPerRequest(db: ReturnType<typeof getDb>): number {
+  const now = Date.now();
+  if (cachedMedianTokens > 0 && now - lastMedianUpdate < 24 * 60 * 60 * 1000) {
+    return cachedMedianTokens;
+  }
+  const requestTokens = db.prepare(`SELECT (input_tokens + output_tokens) AS tokens FROM requests WHERE request_type = 'chat'`).all() as { tokens: number }[];
+  if (requestTokens.length === 0) {
+    cachedMedianTokens = 1000;
+  } else {
+    requestTokens.sort((a, b) => a.tokens - b.tokens);
+    const mid = Math.floor(requestTokens.length / 2);
+    cachedMedianTokens = requestTokens.length % 2 !== 0 ? requestTokens[mid].tokens : (requestTokens[mid - 1].tokens + requestTokens[mid].tokens) / 2;
+  }
+  lastMedianUpdate = now;
+  return cachedMedianTokens;
+}
+
+function formatTokenBudget(tokens: number): string {
+  if (tokens >= 1_000_000) return `~${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (tokens >= 1_000) return `~${Math.round(tokens / 1_000)}K`;
+  return `~${tokens}`;
+}
+
+function computeEstimatedBudget(baseBudget: number, rpdLimit: number | null, medianTokens: number): number {
+  if (baseBudget > 0 || !rpdLimit) return baseBudget;
+  return Math.round(rpdLimit * 30 * medianTokens);
+}
+
 // ── Bandit routing strategy ─────────────────────────────────────────────────
 // GET  /routing → active strategy, preset weights, and the per-model score
 //                 breakdown (reliability / speed / intelligence + guardrails).
@@ -103,9 +134,15 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
     }
   }
 
+  const medianTokens = getMedianTokensPerRequest(db);
+
   res.json(rows.map(r => {
     const penalty = penaltyMap.get(r.model_db_id);
     const group = groupByDbId.get(r.model_db_id);
+    const baseBudget = parseBudget(r.monthly_token_budget);
+    const estimatedTokens = computeEstimatedBudget(baseBudget, r.rpd_limit, medianTokens);
+    const displayBudget = baseBudget === 0 && r.rpd_limit ? formatTokenBudget(estimatedTokens) : r.monthly_token_budget;
+
     return {
       modelDbId: r.model_db_id,
       groupKey: group?.groupKey,
@@ -129,11 +166,11 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
       // Max context length (tokens), used by the dashboard catalog filter. Null
       // for models whose context window the catalog doesn't record.
       contextWindow: r.context_window,
-      monthlyTokenBudget: r.monthly_token_budget,
+      monthlyTokenBudget: displayBudget,
       // Parsed once here (single source of truth) so the dashboard never re-implements
       // budget-label parsing; 0 for rate-limited/placeholder labels. See lib/budget.ts.
       // Scaled by healthy/enabled key count for multi-account pooled capacity.
-      monthlyTokenBudgetTokens: parseBudget(r.monthly_token_budget) * Math.max(1, keyCountMap.get(r.platform) ?? 1),
+      monthlyTokenBudgetTokens: estimatedTokens * Math.max(1, keyCountMap.get(r.platform) ?? 1),
       supportsVision: r.supports_vision === 1,
       supportsTools: r.supports_tools === 1,
       source: r.platform === 'custom' || r.key_id != null ? 'custom' : 'catalog',
@@ -303,6 +340,8 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
       .map(k => [k.platform, k.count])
   );
 
+  const medianTokens = getMedianTokensPerRequest(db);
+
   const modelBudgets = rawModels
     .filter(m => platformSet.has(m.platform))
     .map(m => {
@@ -312,7 +351,7 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
         displayName: m.display_name,
         platform: m.platform,
         modelId: m.model_id,
-        budget: parseBudget(m.monthly_token_budget) * keys,
+        budget: computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, medianTokens) * keys,
         used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
         enabled: m.enabled === 1,
         rpmLimit: m.rpm_limit,

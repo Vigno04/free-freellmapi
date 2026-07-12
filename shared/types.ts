@@ -101,6 +101,12 @@ export type Platform =
   | 'aionlabs'
   | 'chutes'
   | 'grok'
+  | 'deepseek'
+  | 'xai'
+  | 'nscale'
+  | 'nebius'
+  | 'alibaba'
+  | 'ai21'
   // User-configured OpenAI-compatible endpoint (llama.cpp, LM Studio, vLLM,
   // Ollama, any base_url). The endpoint URL lives on the api_keys row; see #117.
   | 'custom';

@@ -437,12 +437,19 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     'aion-labs': 'aionlabs',
     'glhf-chat': 'glhf',
     'chutes-ai': 'chutes',
-    'grok-(xai)': 'grok'
+    'grok-(xai)': 'grok',
+    'deepseek': 'deepseek',
+    'xai': 'xai',
+    'nscale': 'nscale',
+    'nebius': 'nebius',
+    'alibaba-cloud-model-studio': 'alibaba',
+    'ai21-labs': 'ai21'
   };
 
   const trRegex = /<tr[^>]*?class="[^"]*?model-row[^"]*?"([^>]*?)>/g;
   let match;
   const models: CatalogModel[] = [];
+  const modelProviderSlugs: string[] = [];
 
   while ((match = trRegex.exec(html)) !== null) {
     const attrsStr = match[1];
@@ -532,7 +539,55 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
       supportsTools: true,
       modality
     });
+    modelProviderSlugs.push(providerSlug);
   }
+
+  // --- Fallback limit scraping for missing limits ---
+  const slugsToFetch = new Set<string>();
+  for (let i = 0; i < models.length; i++) {
+    const lim = models[i].limits;
+    if (lim && lim.rpm === null && lim.rpd === null && lim.tpm === null && lim.tpd === null) {
+      slugsToFetch.add(modelProviderSlugs[i]);
+    }
+  }
+
+  const defaultLimitsBySlug: Record<string, { rpm: number | null, rpd: number | null, tpm: number | null, tpd: number | null }> = {};
+  
+  if (slugsToFetch.size > 0) {
+    console.log(`[Sync] Fetching default limits for ${slugsToFetch.size} providers...`);
+    const promises = Array.from(slugsToFetch).map(async slug => {
+      try {
+        const res = await fetch(`https://freellm.net/providers/${slug}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+        if (!res.ok) return;
+        const html = await res.text();
+        const text = html.replace(/<[^>]+>/g, ' ');
+        const rpmMatch = text.match(/(\d+(?:,\d+)?)\s*RPM/i);
+        const rpdMatch = text.match(/(\d+(?:,\d+)?)\s*(?:RPD|req\/day|requests? per day)/i);
+        const tpmMatch = text.match(/(\d+(?:,\d+)?)\s*TPM/i);
+        const tpdMatch = text.match(/(\d+(?:,\d+)?)\s*TPD/i);
+        defaultLimitsBySlug[slug] = {
+          rpm: rpmMatch ? parseInt(rpmMatch[1].replace(/,/g, ''), 10) : null,
+          rpd: rpdMatch ? parseInt(rpdMatch[1].replace(/,/g, ''), 10) : null,
+          tpm: tpmMatch ? parseInt(tpmMatch[1].replace(/,/g, ''), 10) : null,
+          tpd: tpdMatch ? parseInt(tpdMatch[1].replace(/,/g, ''), 10) : null,
+        };
+      } catch (err) {
+        console.warn(`[Sync] Failed to fetch limits for ${slug}: ${err}`);
+      }
+    });
+    await Promise.allSettled(promises);
+  }
+
+  for (let i = 0; i < models.length; i++) {
+    const lim = models[i].limits;
+    if (lim && lim.rpm === null && lim.rpd === null && lim.tpm === null && lim.tpd === null) {
+      const def = defaultLimitsBySlug[modelProviderSlugs[i]];
+      if (def) {
+        models[i].limits = { ...def };
+      }
+    }
+  }
+
   return models;
 }
 

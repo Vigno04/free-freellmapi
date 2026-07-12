@@ -51,6 +51,12 @@ export const PLATFORMS: { value: Platform; label: string; url: string; keyless?:
   { value: 'ainative', label: 'AINative Studio (free key)', url: 'https://ainative.studio' },
   { value: 'nara', label: 'NaraRouter (free key)', url: 'https://router.bynara.id' },
   { value: 'aihorde', label: 'AI Horde (no key needed, slow)', url: 'https://aihorde.net/register', keyless: true },
+  { value: 'deepseek', label: 'DeepSeek', url: 'https://platform.deepseek.com/' },
+  { value: 'xai', label: 'xAI', url: 'https://console.x.ai/' },
+  { value: 'nscale', label: 'NScale', url: 'https://nscale.com/' },
+  { value: 'nebius', label: 'Nebius', url: 'https://nebius.ai/' },
+  { value: 'alibaba', label: 'Alibaba Cloud Model Studio', url: 'https://bailian.console.alibabacloud.com/' },
+  { value: 'ai21', label: 'AI21 Labs', url: 'https://studio.ai21.com/' },
 ]
 
 // 'custom' is configured through its own form (base URL + model), not the
