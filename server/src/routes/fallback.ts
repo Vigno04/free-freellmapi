@@ -362,10 +362,13 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
       stats.count += 1;
       platformStats.set(m.platform, stats);
       
-      return { m, budget, isEstimated: est.isEstimated };
+      const creditMatch = m.monthly_token_budget?.match(/\$(\d+(?:,\d+)?(?:\.\d+)?)\s*Credit/i);
+      const creditBudget = creditMatch ? m.monthly_token_budget : null;
+      
+      return { m, budget, isEstimated: est.isEstimated, creditBudget };
     });
 
-  const modelBudgets = rawModelBudgets.map(({ m, budget, isEstimated }) => {
+  const modelBudgets = rawModelBudgets.map(({ m, budget, isEstimated, creditBudget }) => {
     const stats = platformStats.get(m.platform)!;
     // Divide the platform's max budget by its model count to prevent double-counting
     const sharedBudget = stats.count > 0 ? stats.maxBudget / stats.count : budget;
@@ -377,6 +380,7 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
       modelId: m.model_id,
       budget: Math.round(sharedBudget),
       fullBudget: budget,
+      creditBudget,
       isEstimated,
       used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
       enabled: m.enabled === 1,

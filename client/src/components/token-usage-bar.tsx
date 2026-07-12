@@ -34,8 +34,9 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
     return () => ro.disconnect()
   }, [models.length])
 
-  const classicModels = models.filter(m => !m.isEstimated)
-  const estimatedModels = models.filter(m => m.isEstimated)
+  const creditModels = models.filter(m => !!m.creditBudget)
+  const classicModels = models.filter(m => !m.isEstimated && !m.creditBudget)
+  const estimatedModels = models.filter(m => m.isEstimated && !m.creditBudget)
   const classicBudget = classicModels.reduce((acc, m) => acc + m.budget, 0)
   const classicUsed = classicModels.reduce((acc, m) => acc + (m.used ?? 0), 0)
   const classicRemaining = Math.max(0, classicBudget - classicUsed)
@@ -105,7 +106,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-1.5 text-xs tabular-nums">
           {modelsWithWidth.map((m, i) => (
-            <div key={i} className="flex items-center gap-2 min-w-0">
+            <div key={`c-${i}`} className="flex items-center gap-2 min-w-0">
               <span
                 className="size-2 rounded-sm flex-shrink-0"
                 style={{ backgroundColor: platformColors[m.platform] ?? '#94a3b8' }}
@@ -113,6 +114,17 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
               <span className="truncate">{m.displayName}</span>
               <span className="flex-1" />
               <span className="font-mono text-muted-foreground">{formatTokens(m.fullRemainingTokens)}</span>
+            </div>
+          ))}
+          {creditModels.map((m, i) => (
+            <div key={`cr-${i}`} className="flex items-center gap-2 min-w-0">
+              <span
+                className="size-2 rounded-sm flex-shrink-0"
+                style={{ backgroundColor: platformColors[m.platform] ?? '#94a3b8' }}
+              />
+              <span className="truncate">{m.displayName}</span>
+              <span className="flex-1" />
+              <span className="font-mono text-muted-foreground">{m.creditBudget}</span>
             </div>
           ))}
         </div>

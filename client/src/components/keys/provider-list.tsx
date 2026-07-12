@@ -61,7 +61,7 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
     refetchInterval: 30000,
   })
 
-  const { data: usageData } = useQuery<{ models: { platform: string; enabled: boolean; budget: number }[] }>({
+  const { data: usageData } = useQuery<{ models: { platform: string; enabled: boolean; budget: number; creditBudget?: string | null }[] }>({
     queryKey: ['token-usage'],
     queryFn: () => apiFetch('/api/fallback/token-usage'),
   })
@@ -178,9 +178,13 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
   })).filter(p => p.keys.length > 0)
 
   const providerBudgets = new Map<string, number>()
+  const providerCredits = new Map<string, string>()
   for (const m of usageData?.models ?? []) {
     if (m.enabled && m.budget > 0) {
       providerBudgets.set(m.platform, (providerBudgets.get(m.platform) ?? 0) + m.budget)
+    }
+    if (m.enabled && m.creditBudget) {
+      providerCredits.set(m.platform, m.creditBudget)
     }
   }
 
@@ -309,11 +313,15 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
                   >
                     <h3 className="text-sm font-medium">{group.label}</h3>
                     <Badge variant="secondary" className="tabular-nums">{group.keys.length}</Badge>
-                    {(providerBudgets.get(group.value) ?? 0) > 0 && (
+                    {providerCredits.get(group.value) ? (
+                      <Badge variant="outline" className="tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        {providerCredits.get(group.value)} / mo
+                      </Badge>
+                    ) : (providerBudgets.get(group.value) ?? 0) > 0 ? (
                       <Badge variant="outline" className="tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
                         {formatTokenBudget(providerBudgets.get(group.value)!)} / mo
                       </Badge>
-                    )}
+                    ) : null}
                     <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       {healthyCount > 0 && (
                         <span className="inline-flex items-center gap-1">

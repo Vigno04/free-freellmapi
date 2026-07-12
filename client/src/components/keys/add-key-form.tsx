@@ -21,6 +21,7 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
   const [platform, setPlatform] = useState<Platform | ''>('')
   const [apiKey, setApiKey] = useState('')
   const [accountId, setAccountId] = useState('')
+  const [baseUrl, setBaseUrl] = useState('')
   const [label, setLabel] = useState('')
   const [addAttempted, setAddAttempted] = useState(false)
 
@@ -31,7 +32,7 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
 
   const addKey = useMutation({
     meta: { silenceToast: true },
-    mutationFn: (body: { platform: string; key: string; label?: string }) =>
+    mutationFn: (body: { platform: string; key: string; label?: string; baseUrl?: string }) =>
       apiFetch<{ notice?: string | null }>('/api/keys', { method: 'POST', body: JSON.stringify(body) }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['keys'] })
@@ -47,6 +48,7 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
   })
 
   const needsAccountId = platform === 'cloudflare'
+  const needsBaseUrl = platform === 'alibaba'
   const isKeyless = PLATFORMS.find(p => p.value === platform)?.keyless ?? false
 
   // Field-level validation: the submit stays clickable and reveals what is
@@ -54,17 +56,18 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
   const platformError = !platform ? t('validation.required') : null
   const keyError = !isKeyless && !apiKey.trim() ? t('validation.required') : null
   const accountIdError = needsAccountId && !accountId.trim() ? t('validation.required') : null
+  const baseUrlError = needsBaseUrl && !baseUrl.trim() ? t('validation.required') : null
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (platformError || keyError || accountIdError) {
+    if (platformError || keyError || accountIdError || baseUrlError) {
       setAddAttempted(true)
       return
     }
     setAddAttempted(false)
     // Keyless providers submit an empty key; the backend stores a sentinel.
     const key = isKeyless ? '' : (needsAccountId ? `${accountId}:${apiKey}` : apiKey)
-    addKey.mutate({ platform, key, label: label || undefined })
+    addKey.mutate({ platform, key, label: label || undefined, baseUrl: baseUrl || undefined })
   }
 
   return (
@@ -107,6 +110,19 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
               aria-invalid={addAttempted && !!accountIdError}
             />
             {addAttempted && <FieldError error={accountIdError} />}
+          </div>
+        )}
+        {needsBaseUrl && (
+          <div className="space-y-1.5 flex-1 min-w-[240px]">
+            <Label className="text-xs">{t('keys.customBaseUrl') ?? 'Base URL'}</Label>
+            <Input
+              value={baseUrl}
+              onChange={e => setBaseUrl(e.target.value)}
+              placeholder="https://ws-z6rshi7kluku0x75.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+              className="font-mono text-xs"
+              aria-invalid={addAttempted && !!baseUrlError}
+            />
+            {addAttempted && <FieldError error={baseUrlError} />}
           </div>
         )}
         <div className="space-y-1.5 flex-1 min-w-[240px]">

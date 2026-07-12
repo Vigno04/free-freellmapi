@@ -232,7 +232,7 @@ export default function FallbackPage() {
         <GettingStarted />
 
         {/* Monthly token budget — moved to the top */}
-        {tokenUsage && tokenUsage.totalBudget > 0 && <TokenUsageBar data={tokenUsage} />}
+        {tokenUsage && (tokenUsage.totalBudget > 0 || tokenUsage.models.some(m => m.creditBudget)) && <TokenUsageBar data={tokenUsage} />}
 
         {/* Strategy selector */}
         <section className="rounded-3xl border bg-card p-5">

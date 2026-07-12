@@ -44,6 +44,7 @@ const addKeySchema = z.object({
   platform: z.enum(PLATFORMS),
   key: z.string().optional(),
   label: z.string().optional(),
+  baseUrl: z.string().url().optional().or(z.literal('')),
 });
 
 const updateKeySchema = z.object({
@@ -347,9 +348,9 @@ keysRouter.post('/', (req: Request, res: Response) => {
 
   const { encrypted, iv, authTag } = encrypt(keyToStore);
   const result = db.prepare(`
-    INSERT INTO api_keys (platform, label, encrypted_key, iv, auth_tag, status, enabled)
-    VALUES (?, ?, ?, ?, ?, 'unknown', 1)
-  `).run(platform, label ?? '', encrypted, iv, authTag);
+    INSERT INTO api_keys (platform, label, encrypted_key, iv, auth_tag, status, enabled, base_url)
+    VALUES (?, ?, ?, ?, ?, 'unknown', 1, ?)
+  `).run(platform, label ?? '', encrypted, iv, authTag, parsed.data.baseUrl?.trim() || null);
 
   res.status(201).json({
     id: result.lastInsertRowid,
