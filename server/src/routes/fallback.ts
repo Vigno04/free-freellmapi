@@ -41,9 +41,11 @@ function formatTokenBudget(tokens: number): string {
   return `~${tokens}`;
 }
 
-function computeEstimatedBudget(baseBudget: number, rpdLimit: number | null, medianTokens: number): number {
-  if (baseBudget > 0 || !rpdLimit) return baseBudget;
-  return Math.round(rpdLimit * 30 * medianTokens);
+function computeEstimatedBudget(baseBudget: number, rpdLimit: number | null, rpmLimit: number | null, medianTokens: number): number {
+  if (baseBudget > 0) return baseBudget;
+  if (rpdLimit) return Math.round(rpdLimit * 30 * medianTokens);
+  if (rpmLimit) return Math.round(rpmLimit * 60 * 24 * 30 * medianTokens);
+  return baseBudget;
 }
 
 // ── Bandit routing strategy ─────────────────────────────────────────────────
@@ -140,8 +142,8 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
     const penalty = penaltyMap.get(r.model_db_id);
     const group = groupByDbId.get(r.model_db_id);
     const baseBudget = parseBudget(r.monthly_token_budget);
-    const estimatedTokens = computeEstimatedBudget(baseBudget, r.rpd_limit, medianTokens);
-    const displayBudget = baseBudget === 0 && r.rpd_limit ? formatTokenBudget(estimatedTokens) : r.monthly_token_budget;
+    const estimatedTokens = computeEstimatedBudget(baseBudget, r.rpd_limit, r.rpm_limit, medianTokens);
+    const displayBudget = baseBudget === 0 && (r.rpd_limit || r.rpm_limit) ? formatTokenBudget(estimatedTokens) : r.monthly_token_budget;
 
     return {
       modelDbId: r.model_db_id,
@@ -351,7 +353,7 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
         displayName: m.display_name,
         platform: m.platform,
         modelId: m.model_id,
-        budget: computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, medianTokens) * keys,
+        budget: computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens) * keys,
         used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
         enabled: m.enabled === 1,
         rpmLimit: m.rpm_limit,
