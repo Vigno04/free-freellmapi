@@ -434,7 +434,7 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     'ai-horde': 'aihorde',
     'modelscope': 'modelscope',
     'github-models': 'github',
-    'aion-labs': 'aionlabs',
+    'aion-labs': 'aion',
     'glhf-chat': 'glhf',
     'chutes-ai': 'chutes',
     'grok-(xai)': 'grok',

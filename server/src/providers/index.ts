@@ -328,12 +328,6 @@ register(new OpenAICompatProvider({
   baseUrl: 'https://glhf.chat/api/openai/v1',
 }));
 
-// Aion Labs — OpenAI-compatible (api.aionlabs.ai/v1).
-register(new OpenAICompatProvider({
-  platform: 'aionlabs',
-  name: 'Aion Labs',
-  baseUrl: 'https://api.aionlabs.ai/v1',
-}));
 
 // Chutes AI — OpenAI-compatible (llm.chutes.ai/v1).
 register(new OpenAICompatProvider({
