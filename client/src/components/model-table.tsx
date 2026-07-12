@@ -119,12 +119,14 @@ export function RowContent({
           )}
         </div>
         <div className="text-[11px] text-muted-foreground/70 tabular-nums mt-0.5">
-          {/* Token budget only when it's a real token count; rate-limited models
-              (NVIDIA's "free · 40 RPM") show their rate, not "… tok/mo". */}
+          {/* For estimated budgets (computed from RPD/RPM): show the estimated tok/mo label,
+              then show the rate limits that were used to compute it.
+              For real catalog budgets: show tok/mo and any rate limits.
+              For rate-only models (no budget at all): show only rate limits. */}
           {[
             (row.monthlyTokenBudgetTokens ?? 0) > 0 ? t('models.tokPerMonth', { count: row.monthlyTokenBudget }) : null,
-            row.rpmLimit ? t('models.rpmLimit', { count: row.rpmLimit }) : null,
-            row.rpdLimit ? t('models.rpdLimit', { count: row.rpdLimit }) : null,
+            !row.isEstimatedBudget && row.rpmLimit ? t('models.rpmLimit', { count: row.rpmLimit }) : null,
+            !row.isEstimatedBudget && row.rpdLimit ? t('models.rpdLimit', { count: row.rpdLimit }) : null,
           ].filter(Boolean).join(' · ') || cleanQuotaLabel(row.monthlyTokenBudget) || '—'}
         </div>
       </td>

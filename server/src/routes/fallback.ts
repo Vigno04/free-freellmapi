@@ -36,16 +36,19 @@ function getMedianTokensPerRequest(db: ReturnType<typeof getDb>): number {
 }
 
 function formatTokenBudget(tokens: number): string {
+  if (tokens >= 1_000_000_000) return `~${(tokens / 1_000_000_000).toFixed(1).replace(/\.0$/, '')}B`;
   if (tokens >= 1_000_000) return `~${(tokens / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
   if (tokens >= 1_000) return `~${Math.round(tokens / 1_000)}K`;
   return `~${tokens}`;
 }
 
-function computeEstimatedBudget(baseBudget: number, rpdLimit: number | null, rpmLimit: number | null, medianTokens: number): number {
-  if (baseBudget > 0) return baseBudget;
-  if (rpdLimit) return Math.round(rpdLimit * 30 * medianTokens);
-  if (rpmLimit) return Math.round(rpmLimit * 60 * 24 * 30 * medianTokens);
-  return baseBudget;
+function computeEstimatedBudget(baseBudget: number, rpdLimit: number | null, rpmLimit: number | null, medianTokens: number): { tokens: number; isEstimated: boolean } {
+  if (baseBudget > 0) return { tokens: baseBudget, isEstimated: false };
+  // RPD-limited: daily requests * 30 days * median tokens per request.
+  if (rpdLimit) return { tokens: Math.round(rpdLimit * 30 * medianTokens), isEstimated: true };
+  // RPM-limited only: assume 16 active hours/day (realistic) * 30 days.
+  if (rpmLimit) return { tokens: Math.round(rpmLimit * 60 * 16 * 30 * medianTokens), isEstimated: true };
+  return { tokens: baseBudget, isEstimated: false };
 }
 
 // ── Bandit routing strategy ─────────────────────────────────────────────────
@@ -142,8 +145,8 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
     const penalty = penaltyMap.get(r.model_db_id);
     const group = groupByDbId.get(r.model_db_id);
     const baseBudget = parseBudget(r.monthly_token_budget);
-    const estimatedTokens = computeEstimatedBudget(baseBudget, r.rpd_limit, r.rpm_limit, medianTokens);
-    const displayBudget = baseBudget === 0 && (r.rpd_limit || r.rpm_limit) ? formatTokenBudget(estimatedTokens) : r.monthly_token_budget;
+    const { tokens: estimatedTokens, isEstimated } = computeEstimatedBudget(baseBudget, r.rpd_limit, r.rpm_limit, medianTokens);
+    const displayBudget = isEstimated ? formatTokenBudget(estimatedTokens) : r.monthly_token_budget;
 
     return {
       modelDbId: r.model_db_id,
@@ -169,6 +172,7 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
       // for models whose context window the catalog doesn't record.
       contextWindow: r.context_window,
       monthlyTokenBudget: displayBudget,
+      isEstimatedBudget: isEstimated,
       // Parsed once here (single source of truth) so the dashboard never re-implements
       // budget-label parsing; 0 for rate-limited/placeholder labels. See lib/budget.ts.
       // Scaled by healthy/enabled key count for multi-account pooled capacity.
@@ -353,7 +357,7 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
         displayName: m.display_name,
         platform: m.platform,
         modelId: m.model_id,
-        budget: computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens) * keys,
+        budget: computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens).tokens * keys,
         used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
         enabled: m.enabled === 1,
         rpmLimit: m.rpm_limit,

@@ -21,6 +21,9 @@ export interface FallbackEntry {
   // Parsed token count from the server (single source of truth — see
   // server/src/lib/budget.ts). Optional only because the dev mock omits it.
   monthlyTokenBudgetTokens?: number
+  // True when monthlyTokenBudget / monthlyTokenBudgetTokens was estimated
+  // from RPD/RPM limits rather than read from the catalog.
+  isEstimatedBudget?: boolean
   // Max context length in tokens (catalog value), or null when unrecorded.
   // Drives the catalog context-window filter on the Models page.
   contextWindow?: number | null
@@ -134,10 +137,14 @@ export function groupQuotaBadge(
   t: (key: string, vars?: Record<string, string | number>) => string,
 ): { text: string; title: string } | null {
   const totalBudget = members.reduce((sum, m) => sum + (m.monthlyTokenBudgetTokens ?? 0), 0)
+  const anyEstimated = members.some(m => m.isEstimatedBudget && (m.monthlyTokenBudgetTokens ?? 0) > 0)
   const maxRpm = Math.max(0, ...members.map(m => m.rpmLimit ?? 0))
   const maxRpd = Math.max(0, ...members.map(m => m.rpdLimit ?? 0))
   const rateLabelText = members.map(m => cleanQuotaLabel(m.monthlyTokenBudget)).find(Boolean) ?? null
-  if (totalBudget > 0) return { text: t('models.aggregateBudget', { count: formatTokens(totalBudget) }), title: t('models.aggregateBudgetTitle') }
+  if (totalBudget > 0) {
+    const label = `${anyEstimated ? '~' : ''}${formatTokens(totalBudget)}`
+    return { text: t('models.aggregateBudget', { count: label }), title: t('models.aggregateBudgetTitle') }
+  }
   if (maxRpm > 0) return { text: t('models.rateRpm', { count: maxRpm }), title: t('models.rateTitle') }
   if (maxRpd > 0) return { text: t('models.rateRpd', { count: maxRpd }), title: t('models.rateTitle') }
   if (rateLabelText) return { text: rateLabelText, title: t('models.rateTitle') }

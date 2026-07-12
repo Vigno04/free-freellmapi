@@ -61,6 +61,11 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
     refetchInterval: 30000,
   })
 
+  const { data: usageData } = useQuery<{ platform: string; enabled: boolean; budget: number }[]>({
+    queryKey: ['token-usage'],
+    queryFn: () => apiFetch('/api/fallback/token-usage'),
+  })
+
   const { data: proxyData } = useQuery<{ proxyUrl: string; enabled: boolean; bypassPlatforms: string[]; active: boolean }>({
     queryKey: ['proxy-url'],
     queryFn: () => apiFetch('/api/settings/proxy'),
@@ -172,10 +177,24 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
     keys: keys.filter(k => k.platform === p.value),
   })).filter(p => p.keys.length > 0)
 
+  const providerBudgets = new Map<string, number>()
+  for (const m of usageData ?? []) {
+    if (m.enabled && m.budget > 0) {
+      providerBudgets.set(m.platform, (providerBudgets.get(m.platform) ?? 0) + m.budget)
+    }
+  }
+
   const totalProviders = grouped.length
   const totalKeys = grouped.reduce((n, g) => n + g.keys.length, 0)
 
   const q = search.trim().toLowerCase()
+
+  function formatTokenBudget(num: number): string {
+    if (num >= 1000000000) return `~${(num / 1000000000).toFixed(1).replace(/\.0$/, '')}B`
+    if (num >= 1000000) return `~${(num / 1000000).toFixed(1).replace(/\.0$/, '')}M`
+    if (num >= 1000) return `~${Math.round(num / 1000)}K`
+    return `~${num}`
+  }
 
   function matchStatus(group: (typeof grouped)[number]): boolean {
     const enabled = group.keys.some(k => k.enabled)
@@ -290,6 +309,11 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
                   >
                     <h3 className="text-sm font-medium">{group.label}</h3>
                     <Badge variant="secondary" className="tabular-nums">{group.keys.length}</Badge>
+                    {(providerBudgets.get(group.value) ?? 0) > 0 && (
+                      <Badge variant="outline" className="tabular-nums border-emerald-500/20 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
+                        {formatTokenBudget(providerBudgets.get(group.value)!)} / mo
+                      </Badge>
+                    )}
                     <span className="inline-flex items-center gap-2 text-xs text-muted-foreground">
                       {healthyCount > 0 && (
                         <span className="inline-flex items-center gap-1">
