@@ -23,7 +23,10 @@ import {
   traceRouteEvent,
   logRequest,
 } from './proxy.js';
-import { runFallbackLoop, newFallbackState, recordUpstreamSuccess } from '../lib/fallback-loop.js';
+import { runFallbackLoop, newFallbackState, recordUpstreamSuccess, setFallbackHeaders, type AttemptRecord } from '../lib/fallback-loop.js';
+import { applyTokenBudget, tokenBudgetMessage } from '../lib/guardrails.js';
+import { samplingParamSchemaFields, pickSamplingParams, type ResponseFormat } from '../lib/sampling-params.js';
+import { enforceJsonContent } from '../lib/structured-output.js';
 import { sanitizeProviderErrorMessage } from '../lib/error-redaction.js';
 import { inferQuotaPoolKey, type QuotaObservationContext } from '../services/provider-quota.js';
 
@@ -118,6 +121,18 @@ const responsesRequestSchema = z.object({
     z.object({ type: z.literal('function'), name: z.string() }).passthrough(),
   ]).optional(),
   parallel_tool_calls: z.boolean().nullable().optional(),
+  // Extended sampling params, validated the same way as /chat/completions.
+  // Responses clients express structured output as `text.format` rather than
+  // `response_format` — mapped where completionOpts is built.
+  ...samplingParamSchemaFields,
+  text: z.object({
+    format: z.object({
+      type: z.enum(['text', 'json_object', 'json_schema']),
+      name: z.string().optional(),
+      strict: z.boolean().nullable().optional(),
+      schema: z.record(z.string(), z.unknown()).optional(),
+    }).passthrough().optional(),
+  }).passthrough().nullable().optional(),
 }).passthrough();
 
 type ResponsesRequest = z.infer<typeof responsesRequestSchema>;
@@ -326,6 +341,17 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
   // the way back out (see lib/tool-args.ts).
   const toolSchemas = toolSchemaMap(tools);
   const tool_choice = tools?.length ? toChatToolChoice(reqData.tool_choice) : undefined;
+  // Responses-API structured output arrives as `text.format`; translate it to
+  // the internal response_format shape (an explicit response_format on the
+  // body, unusual for this surface but valid, wins).
+  const samplingParams = pickSamplingParams(reqData);
+  const textFormat = reqData.text?.format;
+  if (!samplingParams.response_format && textFormat && textFormat.type !== 'text') {
+    samplingParams.response_format = textFormat.type === 'json_schema'
+      ? { type: 'json_schema', json_schema: { name: textFormat.name, strict: textFormat.strict, schema: textFormat.schema } }
+      : { type: 'json_object' } as ResponseFormat;
+  }
+
   const completionOpts = {
     temperature: reqData.temperature ?? undefined,
     max_tokens: reqData.max_output_tokens ?? undefined,
@@ -333,6 +359,7 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
     tools,
     tool_choice,
     parallel_tool_calls: reqData.parallel_tool_calls ?? undefined,
+    ...samplingParams,
   };
 
   const estimatedInputTokens = messages.reduce(
@@ -342,6 +369,18 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
   // Capped output reserve so a large max_output_tokens can't falsely exclude the
   // model pool (#470); input counts in full.
   const estimatedTotal = estimatedInputTokens + routingReserveTokens(reqData.max_output_tokens);
+
+  // Guardrail: per-request token budget (request_max_tokens_budget, default
+  // off). A request with no max_output_tokens gets its output capped to the
+  // budget remainder instead of a rejection.
+  const budgetCheck = applyTokenBudget(estimatedInputTokens, completionOpts.max_tokens);
+  if (budgetCheck.rejection) {
+    res.status(413).json({
+      error: { message: tokenBudgetMessage(budgetCheck.rejection), type: 'invalid_request_error', code: 'request_token_budget' },
+    });
+    return;
+  }
+  completionOpts.max_tokens = budgetCheck.maxTokens;
   // Optional client-managed session affinity (mirrors /chat/completions).
   const rawSessionId = req.headers['x-session-id'];
   const sessionIdHeader = Array.isArray(rawSessionId) ? rawSessionId[0] : rawSessionId;
@@ -367,6 +406,9 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
 
   const responseId = newId('resp');
   const state = newFallbackState();
+  const attemptLog: AttemptRecord[] = [];
+  let clientGone = false;
+  res.on('close', () => { if (!res.writableEnded) clientGone = true; });
 
   // Stream bookkeeping (used only when stream === true). `streamStarted` is the
   // commit flag: true once the response.created/in_progress skeleton has left,
@@ -383,7 +425,9 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
   await runFallbackLoop({
     maxRetries: MAX_RETRIES,
     state,
-    route: () => routeRequest(estimatedTotal, state.skipKeys.size > 0 ? state.skipKeys : undefined, preferredModel, false, wantsTools, state.skipModels.size > 0 ? state.skipModels : undefined),
+    attemptLog,
+    clientGone: () => clientGone,
+    route: () => routeRequest(estimatedTotal, state.skipKeys.size > 0 ? state.skipKeys : undefined, preferredModel, false, wantsTools, state.skipModels.size > 0 ? state.skipModels : undefined, undefined, completionOpts.response_format !== undefined),
     dispatch: async (route, attempt) => {
       traceRouteEvent('Responses', {
         event: attempt === 0 ? 'start' : 'next',
@@ -421,7 +465,7 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
           res.setHeader('Cache-Control', 'no-cache');
           res.setHeader('Connection', 'keep-alive');
           res.setHeader('X-Routed-Via', `${route.platform}/${route.modelId}`);
-          if (attempt > 0) res.setHeader('X-Fallback-Attempts', String(attempt));
+          setFallbackHeaders(res, attempt, attemptLog);
           const skeleton = {
             id: responseId, object: 'response', created_at: nowUnix(),
             status: 'in_progress', model: route.modelId, output: [], output_text: '',
@@ -459,6 +503,7 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
           );
 
           for await (const chunk of gen) {
+            if (clientGone) break; // client hung up: stop pulling; reader.cancel() aborts upstream
             // In-band upstream error frame ({"error":...} inside a 200 SSE
             // stream — observed live from Groq). Throwing hands it to the catch
             // below: pre-commit it fails over, post-commit it surfaces
@@ -574,6 +619,15 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
           // been committed yet (the skeleton is lazy), so throwing lets the
           // shared loop fail over to the next model on the same SSE connection.
           if (msgText.length === 0 && toolAcc.size === 0) {
+            // Disconnect before the commit point: the break above fired with
+            // nothing accumulated — CLIENT behavior, not a provider failure.
+            // Falling through to the empty-completion throw benched a healthy
+            // model+key for 90s on every Ctrl-C during a reasoning model's
+            // TTFB window.
+            if (clientGone && !streamStarted) {
+              console.log(`[Responses] client disconnected before first token from ${route.displayName} — dropping attempt without benching`);
+              return 'committed';
+            }
             // finish_reason 'length' = the model spent the whole output budget
             // on hidden reasoning before any visible text: fail over, but skip
             // the cooldown/penalty (not a provider-health signal).
@@ -691,6 +745,25 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
         );
       }
 
+      // Structured-output enforcement — see /chat/completions. Heal fenced or
+      // prose-wrapped JSON in place, fail over (skipBench + skipModelForRequest
+      // — a sibling key would misbehave identically) when the model ignored the
+      // requested format; finish_reason 'length' gets an honest "truncated"
+      // class instead, since the JSON was cut off by max_tokens, not ignored.
+      if (completionOpts.response_format && text && toolCalls.length === 0) {
+        const enforced = enforceJsonContent(text);
+        if (!enforced.ok) {
+          const truncated = result.choices[0]?.finish_reason === 'length';
+          throw Object.assign(
+            new Error(truncated
+              ? `truncated JSON from ${route.displayName} (finish_reason=length — raise max_tokens for this ${completionOpts.response_format.type} request)`
+              : `${route.displayName} ignored response_format (returned non-JSON despite ${completionOpts.response_format.type})`),
+            { skipBench: true, skipModelForRequest: true },
+          );
+        }
+        if (enforced.healed) text = enforced.content;
+      }
+
       // Usage fallback: a missing provider `usage` block used to record 0
       // tokens against the rate-limit ledger; promptTokens/completionTokens
       // above already carry the chars/4 estimate.
@@ -698,7 +771,7 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
       setStickyModel(messages, route.modelDbId, sessionIdHeader);
 
       res.setHeader('X-Routed-Via', `${route.platform}/${route.modelId}`);
-      if (attempt > 0) res.setHeader('X-Fallback-Attempts', String(attempt));
+      setFallbackHeaders(res, attempt, attemptLog);
       res.json(buildResponseObject({
         id: responseId, model: route.modelId, text, toolCalls,
         promptTokens, completionTokens,
@@ -732,7 +805,7 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
       logRequest(route.platform, route.modelId, route.keyId, 'error', estimatedInputTokens, 0, latency, safeError);
     },
     onFatal: (route, err, attempt) => {
-      if (attempt > 0) res.setHeader('X-Fallback-Attempts', String(attempt));
+      setFallbackHeaders(res, attempt, attemptLog);
       res.status(502).json({ error: { message: `Provider error (${route.displayName}): ${sanitizeProviderErrorMessage(err.message)}`, type: 'provider_error' } });
     },
     onRoutingExhausted: (lastError, routeErr, exhaustion, info) => {
@@ -743,7 +816,7 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
         sse('response.failed', { response: { id: responseId, object: 'response', status: 'failed', error: { message, type } } });
         res.end();
       } else {
-        if (info.attempts.length > 0) res.setHeader('X-Fallback-Attempts', String(info.attempts.length));
+        setFallbackHeaders(res, info.attempts.length, info.attempts);
         res.status(status).json({ error: { message, type } });
       }
     },
@@ -754,7 +827,7 @@ responsesRouter.post('/responses', async (req: Request, res: Response) => {
         sse('response.failed', { response: { id: responseId, object: 'response', status: 'failed', error: { message: exhaustion.message, type: exhaustion.type } } });
         res.end();
       } else {
-        if (info.attempts.length > 0) res.setHeader('X-Fallback-Attempts', String(info.attempts.length));
+        setFallbackHeaders(res, info.attempts.length, info.attempts);
         res.status(exhaustion.status).json({ error: { message: exhaustion.message, type: exhaustion.type } });
       }
     },

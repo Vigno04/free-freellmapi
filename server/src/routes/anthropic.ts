@@ -17,7 +17,8 @@ import { rescueInlineToolCalls, startsWithDialectMarker, couldBecomeDialectMarke
 import { sanitizeProviderErrorMessage } from '../lib/error-redaction.js';
 import { logRequest } from '../lib/request-log.js';
 import { extractApiToken, timingSafeStringEqual, getStickyModel, setStickyModel } from './proxy.js';
-import { runFallbackLoop, newFallbackState, recordUpstreamSuccess, type ExhaustionBody } from '../lib/fallback-loop.js';
+import { runFallbackLoop, newFallbackState, recordUpstreamSuccess, type ExhaustionBody, setFallbackHeaders, type AttemptRecord } from '../lib/fallback-loop.js';
+import { applyTokenBudget, tokenBudgetMessage } from '../lib/guardrails.js';
 import { resolveAnthropicModel } from '../services/anthropic-map.js';
 import { buildModelListing } from '../services/model-listing.js';
 
@@ -78,6 +79,9 @@ const messagesSchema = z.object({
   system: z.union([z.string(), z.array(contentBlockSchema)]).optional(),
   temperature: z.number().min(0).max(2).optional(),
   top_p: z.number().min(0).max(1).optional(),
+  // Anthropic's native top_k — forwarded to providers that support it via the
+  // platform policy in lib/sampling-params.ts.
+  top_k: z.number().int().min(1).nullable().optional(),
   stream: z.boolean().optional(),
   stop_sequences: z.array(z.string()).optional(),
   tools: z.array(anthropicToolSchema).optional(),
@@ -110,10 +114,14 @@ function sendError(res: Response, status: number, errorType: string, message: st
 
 // The shared exhaustion body's `type` strings are chosen to be valid on the
 // OpenAI-shaped surfaces; the all-keys-failed-auth exhaustion carries
-// 'provider_error', which is not an Anthropic error type. Remap it onto
-// Anthropic's generic 'api_error' so this surface stays wire-correct.
+// 'provider_error' and the circuit-breaker stop carries 'service_unavailable',
+// neither of which is an Anthropic error type. Remap them onto Anthropic's
+// vocabulary ('api_error' / 'overloaded_error') so this surface stays
+// wire-correct.
 function anthropicErrorType(body: ExhaustionBody): string {
-  return body.kind === 'auth' ? 'api_error' : body.type;
+  if (body.kind === 'auth') return 'api_error';
+  if (body.kind === 'unavailable') return 'overloaded_error';
+  return body.type;
 }
 
 function newMessageId(): string {
@@ -361,15 +369,32 @@ anthropicRouter.post('/messages', async (req: Request, res: Response) => {
 
   const body = parsed.data;
   const requestedModel = body.model ?? 'auto';
-  const max_tokens = body.max_tokens != null && body.max_tokens > 0 ? body.max_tokens : DEFAULT_MAX_TOKENS;
+  // The Anthropic wire format requires max_tokens, but OUR default injection
+  // must not change the budget gate's verdict: gating AFTER defaulting made a
+  // no-max_tokens request 413 here (input + 1024 over budget) where the chat
+  // surface would cap it and serve. Gate on what the client actually sent,
+  // then resolve the default against the budget remainder.
+  const clientMaxTokens = body.max_tokens != null && body.max_tokens > 0 ? body.max_tokens : undefined;
   const { temperature, top_p, stream } = body;
 
   const { messages, tools, tool_choice, hasImage, wantsTools } = convertRequest(body);
-  const completionOptions = { temperature, max_tokens, top_p, tools, tool_choice };
 
   const estimatedInputTokens = estimateTokens(messages);
   const imageCount = messages.reduce((n, m) =>
     n + (Array.isArray(m.content) ? m.content.filter(b => (b as any)?.type === 'image_url').length : 0), 0);
+
+  // Guardrail: per-request token budget (request_max_tokens_budget, default
+  // off). A client-set max_tokens can only pass or reject; an omitted one is
+  // capped to the budget remainder, mirroring /v1/chat/completions.
+  const budgetCheck = applyTokenBudget(estimatedInputTokens + imageCount * IMAGE_TOKEN_ESTIMATE, clientMaxTokens);
+  if (budgetCheck.rejection) {
+    sendError(res, 413, 'invalid_request_error', tokenBudgetMessage(budgetCheck.rejection));
+    return;
+  }
+  const max_tokens = clientMaxTokens
+    ?? (budgetCheck.maxTokens != null ? Math.min(DEFAULT_MAX_TOKENS, budgetCheck.maxTokens) : DEFAULT_MAX_TOKENS);
+
+  const completionOptions = { temperature, max_tokens, top_p, top_k: body.top_k ?? undefined, tools, tool_choice };
   // Capped output reserve so a large max_tokens can't falsely exclude the model
   // pool (#470); input + images count in full.
   const estimatedTotal = estimatedInputTokens + imageCount * IMAGE_TOKEN_ESTIMATE + routingReserveTokens(max_tokens);
@@ -396,16 +421,21 @@ anthropicRouter.post('/messages', async (req: Request, res: Response) => {
   // when every provider rejected the request, not always a 429), and applies the
   // inline tool-call dialect rescue that the OpenAI/Responses surfaces carry.
   const state = newFallbackState();
+  const attemptLog: AttemptRecord[] = [];
+  let clientGone = false;
+  res.on('close', () => { if (!res.writableEnded) clientGone = true; });
 
   await runFallbackLoop({
     maxRetries: MAX_RETRIES,
     state,
+    attemptLog,
+    clientGone: () => clientGone,
     route: () => routeRequest(estimatedTotal, state.skipKeys.size > 0 ? state.skipKeys : undefined, preferredModel, hasImage, wantsTools, state.skipModels.size > 0 ? state.skipModels : undefined),
     dispatch: async (route, attempt) => {
       if (stream) {
         try {
           await streamCompletion(res, route, messages, completionOptions, {
-            start, attempt, requestedModel, estimatedInputTokens, tools, pinnedModelId,
+            start, attempt, attemptLog, clientGone: () => clientGone, requestedModel, estimatedInputTokens, tools, pinnedModelId,
             sessionId, pinned: resolved.pinned,
           });
           return 'done';
@@ -483,7 +513,7 @@ anthropicRouter.post('/messages', async (req: Request, res: Response) => {
       };
 
       res.setHeader('X-Routed-Via', `${route.platform}/${route.modelId}`);
-      if (attempt > 0) res.setHeader('X-Fallback-Attempts', String(attempt));
+      setFallbackHeaders(res, attempt, attemptLog);
       logRequest(route.platform, route.modelId, route.keyId, 'success', promptTokens, completionTokens, Date.now() - start, null, null, pinnedModelId);
       res.json(anthropicResponse);
       return 'done';
@@ -492,19 +522,19 @@ anthropicRouter.post('/messages', async (req: Request, res: Response) => {
       logRequest(route.platform, route.modelId, route.keyId, 'error', estimatedInputTokens, 0, Date.now() - start, sanitizeProviderErrorMessage(err.message), null, pinnedModelId);
     },
     onFatal: (route, err, attempt) => {
-      if (attempt > 0) res.setHeader('X-Fallback-Attempts', String(attempt));
+      setFallbackHeaders(res, attempt, attemptLog);
       sendError(res, 502, 'api_error', `Provider error (${route.displayName}): ${sanitizeProviderErrorMessage(err.message)}`);
     },
     onRoutingExhausted: (lastError, routeErr, exhaustion, info) => {
       if (exhaustion) {
-        if (info.attempts.length > 0) res.setHeader('X-Fallback-Attempts', String(info.attempts.length));
+        setFallbackHeaders(res, info.attempts.length, info.attempts);
         sendError(res, exhaustion.status, anthropicErrorType(exhaustion), exhaustion.message);
       } else {
         sendError(res, routeErr?.status ?? 503, 'api_error', routeErr?.message ?? 'No model available to route this request');
       }
     },
     onExhausted: (exhaustion, info) => {
-      if (info.attempts.length > 0) res.setHeader('X-Fallback-Attempts', String(info.attempts.length));
+      setFallbackHeaders(res, info.attempts.length, info.attempts);
       sendError(res, exhaustion.status, anthropicErrorType(exhaustion), exhaustion.message);
     },
   });
@@ -518,6 +548,8 @@ class StreamAlreadyStarted extends Error {}
 interface StreamCtx {
   start: number;
   attempt: number;
+  attemptLog: AttemptRecord[];
+  clientGone: () => boolean;
   requestedModel: string;
   estimatedInputTokens: number;
   tools?: ChatToolDefinition[];
@@ -565,7 +597,7 @@ async function streamCompletion(
     res.setHeader('Cache-Control', 'no-cache');
     res.setHeader('Connection', 'keep-alive');
     res.setHeader('X-Routed-Via', `${route.platform}/${route.modelId}`);
-    if (ctx.attempt > 0) res.setHeader('X-Fallback-Attempts', String(ctx.attempt));
+    setFallbackHeaders(res, ctx.attempt, ctx.attemptLog);
     writeSse(res, 'message_start', {
       type: 'message_start',
       message: {
@@ -593,6 +625,7 @@ async function streamCompletion(
     const gen = route.provider.streamChatCompletion(route.apiKey, messages, route.modelId, options);
 
     for await (const chunk of gen) {
+      if (ctx.clientGone()) break; // client hung up: stop pulling; reader.cancel() aborts upstream
       const anyChunk = chunk as Record<string, any>;
 
       // In-band provider error frame (e.g. Groq emits {"error":…} inside a 200
@@ -688,6 +721,15 @@ async function streamCompletion(
     // Nothing usable came out — fail over (message_start was never sent, so the
     // client never saw this attempt).
     if (!messageStarted && completedCalls.length === 0) {
+      // Disconnect before the commit point: the pump loop broke with nothing
+      // accumulated because the CLIENT left, not because the provider failed —
+      // benching a healthy model+key for it was wrong. StreamAlreadyStarted
+      // maps to 'committed' in the dispatcher: stop, no failover, no
+      // exhaustion render (the socket is gone anyway).
+      if (ctx.clientGone()) {
+        console.log(`[Anthropic] client disconnected before first token from ${route.displayName} — dropping attempt without benching`);
+        throw new StreamAlreadyStarted();
+      }
       // finish_reason 'length' = the model spent the whole output budget on
       // hidden reasoning before any visible text: fail over, but skip the
       // cooldown/penalty (not a provider-health signal).

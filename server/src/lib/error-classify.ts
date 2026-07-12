@@ -62,6 +62,15 @@ export function isRetryableError(err: any): boolean {
     // all thrown before any byte reached the client, so another model can
     // serve the request invisibly.
     || msg.includes('empty completion')
+    // The model answered in prose despite a response_format request (and the
+    // JSON couldn't be healed out of the text) — thrown before any byte
+    // reached the client, so the next candidate can serve it invisibly.
+    || msg.includes('ignored response_format')
+    // The model DID emit JSON but ran out of max_tokens mid-value
+    // (finish_reason 'length'). A terser model may fit the same schema in the
+    // same budget, so fail over — but the thrower marks the model skipped for
+    // this request: retrying the same model would truncate identically.
+    || msg.includes('truncated json')
     || msg.includes('in-band provider error')
     || msg.includes('stream ended unexpectedly')
     || msg.includes('stream stalled')

@@ -8,6 +8,7 @@ import {
   speedScore, intelligenceScore, headroomFactor, rateLimitFactor, combineScore,
 } from './scoring.js';
 import { parseBudget } from '../lib/budget.js';
+import { platformDropsResponseFormat } from '../lib/sampling-params.js';
 import { isUnifyEnabled, getModelGroups, resolveRequestedIdToMembers } from './model-groups.js';
 import type { BaseProvider } from '../providers/base.js';
 import type { Platform } from '@freellmapi/shared/types.js';
@@ -68,6 +69,7 @@ export function summarizeExhaustion(
     else if (l.includes('< estimated')) bump('prompt too large for the model');
     else if (l.includes('no vision support')) bump('model lacks vision');
     else if (l.includes('no tool-calling support')) bump('model lacks tool-calling');
+    else if (l.includes('drops response_format')) bump('platform cannot honor response_format');
     else if (/ruled out|already-failed/.test(l)) bump('failed earlier this request');
     else if (/cooldown|rpm|rpd|tpm|tpd|provider-daily-cap/.test(l)) bump('rate-limited or on cooldown');
     else bump('unavailable');
@@ -79,6 +81,7 @@ export function summarizeExhaustion(
     'prompt too large for the model',
     'model lacks vision',
     'model lacks tool-calling',
+    'platform cannot honor response_format',
     'failed earlier this request',
     'unsupported provider',
     'unavailable',
@@ -980,7 +983,7 @@ export function resolveFusionCandidate(modelId: string): FusionCandidate | null 
   return null;
 }
 
-export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, preferredModelDbId?: number, requireVision = false, requireTools = false, skipModels?: Set<number>, prefetchedChain?: ChainRow[]): RouteResult {
+export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, preferredModelDbId?: number, requireVision = false, requireTools = false, skipModels?: Set<number>, prefetchedChain?: ChainRow[], requireStructured = false): RouteResult {
   const db = getDb();
 
   const strategy = getRoutingStrategy();
@@ -1041,6 +1044,14 @@ export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, pre
     // nothing — worse than a failover. Applies to sticky models too, same
     // reasoning as vision above.
     if (requireTools && !entry.supports_tools) { diag.push(`${label}: no tool-calling support`); continue; }
+
+    // Structured-output routing (#514 follow-up): when the request carries a
+    // response_format, skip platforms whose param policy can't even receive it
+    // (the param would be dropped before send, so the model would answer in
+    // prose and burn a failover hop). Platform-level fast path — model-level
+    // capability isn't in the catalog; models that accept the param but ignore
+    // it are caught by the non-stream JSON enforcement downstream.
+    if (requireStructured && platformDropsResponseFormat(entry.platform)) { diag.push(`${label}: platform drops response_format`); continue; }
 
     // Context-aware routing: skip a model whose context window can't hold the
     // request, so a large prompt never selects a small-context model and burns

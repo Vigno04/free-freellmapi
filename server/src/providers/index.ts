@@ -83,10 +83,17 @@ register(new CohereProvider());
 register(new CloudflareProvider());
 
 // Zhipu (Z.ai / bigmodel.cn) - OpenAI-compatible
+//
+// glm-4.7-flash is a hidden-reasoning model: it burns through a long
+// reasoning_content before the first answer byte (live-probed 41s TTFB on a
+// one-word completion, 2026-07-11), and Zhipu buffers that phase even when
+// streaming — so the default 15s timeout aborted every attempt. 60s covers
+// the observed worst case with headroom.
 register(new OpenAICompatProvider({
   platform: 'zhipu',
   name: 'Zhipu AI',
   baseUrl: 'https://open.bigmodel.cn/api/paas/v4',
+  timeoutMs: 60_000,
 }));
 
 // Hugging Face Inference Providers router — re-added in V13. The V4 removal
@@ -200,10 +207,14 @@ register(new OpenAICompatProvider({
 // before 429s (no documented RPM/RPD). Free key from platform.agnes-ai.com,
 // no card. Catalog rows live in the catalog (premium → age into free); not
 // shipped as freeapi model migrations.
+// agnes-2.0-flash reasons before answering (live-probed 20s TTFB on a
+// one-word completion, 2026-07-11), so the default 15s timeout aborted it;
+// 60s matches the other reasoning-hosting platforms.
 register(new OpenAICompatProvider({
   platform: 'agnes',
   name: 'Agnes AI',
   baseUrl: 'https://apihub.agnes-ai.com/v1',
+  timeoutMs: 60_000,
 }));
 
 // Chutes was evaluated for V11 and dropped: probe with a free-tier key
@@ -271,6 +282,24 @@ register(new OpenAICompatProvider({
   platform: 'ainative',
   name: 'AINative Studio',
   baseUrl: 'https://api.ainative.studio/api/v1',
+}));
+
+// Aion Labs — OpenAI-compatible aggregator (api.aionlabs.ai/v1). Free key from
+// aionlabs.ai (no card); recurring free availability is catalog-managed so
+// premium users see rows immediately and free users get them after 30 days.
+register(new OpenAICompatProvider({
+  platform: 'aion',
+  name: 'Aion Labs',
+  baseUrl: 'https://api.aionlabs.ai/v1',
+}));
+
+// Requesty — OpenAI-compatible router (router.requesty.ai/v1). Free key from
+// requesty.ai (no card); free model rows age into the public monthly catalog
+// through the standard 30-day gate.
+register(new OpenAICompatProvider({
+  platform: 'requesty',
+  name: 'Requesty',
+  baseUrl: 'https://router.requesty.ai/v1',
 }));
 
 // NaraRouter — OpenAI-compatible aggregator (router.bynara.id/v1). Free plan

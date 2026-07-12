@@ -185,6 +185,37 @@ function sanitizeForGeminiSchema(schema: unknown, insidePropertiesMap: boolean):
 // declaration, and can ride alongside real function tools in the same array. (#59)
 const GROUNDING_TOOL_NAMES = new Set(['google_search', 'googlesearch', 'google_search_retrieval']);
 
+/**
+ * Extended generationConfig knobs translated from the OpenAI wire: topK,
+ * seed, penalties, and structured output. JSON output conflicts with function
+ * calling on Gemini ("Function calling with a response mime type:
+ * 'application/json' is unsupported"), so response_format is only applied on
+ * tool-free requests. Params Gemini has no equivalent for (min_p, logit_bias,
+ * logprobs…) are dropped by the platform policy in lib/sampling-params.ts and
+ * are ignored here. Exported for tests.
+ */
+export function toGeminiExtendedConfig(options?: CompletionOptions): Record<string, unknown> {
+  const out: Record<string, unknown> = {
+    topK: options?.top_k,
+    seed: options?.seed,
+    presencePenalty: options?.presence_penalty,
+    frequencyPenalty: options?.frequency_penalty,
+  };
+  const rf = options?.response_format;
+  // Count only real function declarations, mirroring hasFunctionDeclarations:
+  // grounding pseudo-tools (google_search etc.) are converted to a grounding
+  // block by toGeminiTools and never conflict with responseMimeType — raw
+  // tools.length was silently dropping structured output for grounding-only
+  // requests.
+  const hasTools = (options?.tools ?? []).some(t => !GROUNDING_TOOL_NAMES.has(t.function.name.toLowerCase()));
+  if (rf && !hasTools) {
+    out.responseMimeType = 'application/json';
+    const schema = rf.type === 'json_schema' ? rf.json_schema?.schema : undefined;
+    if (schema) out.responseSchema = sanitizeForGemini(schema);
+  }
+  return out;
+}
+
 function toGeminiTools(tools?: ChatToolDefinition[]): Array<Record<string, unknown>> | undefined {
   if (!tools || tools.length === 0) return undefined;
 
@@ -460,6 +491,7 @@ export class GoogleProvider extends BaseProvider {
         maxOutputTokens: options?.max_tokens,
         topP: options?.top_p,
         stopSequences: toGeminiStopSequences(options?.stop),
+        ...toGeminiExtendedConfig(options),
       },
       tools,
       // functionCallingConfig is only valid when real function tools are present;
@@ -537,6 +569,7 @@ export class GoogleProvider extends BaseProvider {
         maxOutputTokens: options?.max_tokens,
         topP: options?.top_p,
         stopSequences: toGeminiStopSequences(options?.stop),
+        ...toGeminiExtendedConfig(options),
       },
       tools,
       toolConfig: hasFunctionDeclarations(tools) ? toGeminiToolConfig(options?.tool_choice) : undefined,
@@ -575,20 +608,76 @@ export class GoogleProvider extends BaseProvider {
 
     const seenToolCallKeys = new Set<string>();
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
 
-      buffer += decoder.decode(value, { stream: true });
-      const lines = buffer.split('\n');
-      buffer = lines.pop() ?? '';
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
 
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (!trimmed || !trimmed.startsWith('data: ')) continue;
-        const raw = trimmed.slice(6);
-        if (raw === '[DONE]') {
-          if (!emittedFinish) {
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed || !trimmed.startsWith('data: ')) continue;
+          const raw = trimmed.slice(6);
+          if (raw === '[DONE]') {
+            if (!emittedFinish) {
+              emittedFinish = true;
+              yield {
+                id,
+                object: 'chat.completion.chunk',
+                created: Math.floor(Date.now() / 1000),
+                model: modelId,
+                choices: [{
+                  index: 0,
+                  delta: {},
+                  finish_reason: sawToolCalls ? 'tool_calls' : 'stop',
+                }],
+              };
+            }
+            return;
+          }
+
+          // Skip malformed SSE frames instead of aborting the whole stream.
+          // Matches the defensive parse in openai-compat / cohere / cloudflare:
+          // a single corrupt chunk shouldn't take down the rest of the response.
+          let chunk: GeminiResponse;
+          try {
+            chunk = JSON.parse(raw) as GeminiResponse;
+          } catch {
+            continue;
+          }
+          const candidate = chunk.candidates?.[0];
+          const parts = candidate?.content?.parts ?? [];
+
+          const text = extractText(parts);
+          const toolCalls = extractToolCalls(parts).filter(call => {
+            const key = `${call.id}:${call.function.name}:${call.function.arguments}`;
+            if (seenToolCallKeys.has(key)) return false;
+            seenToolCallKeys.add(key);
+            return true;
+          });
+
+          if ((text && text.length > 0) || toolCalls.length > 0) {
+            sawToolCalls = sawToolCalls || toolCalls.length > 0;
+            yield {
+              id,
+              object: 'chat.completion.chunk',
+              created: Math.floor(Date.now() / 1000),
+              model: modelId,
+              choices: [{
+                index: 0,
+                delta: {
+                  ...(text ? { content: text } : {}),
+                  ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
+                },
+                finish_reason: null,
+              }],
+            };
+          }
+
+          if (candidate?.finishReason && !emittedFinish) {
             emittedFinish = true;
             yield {
               id,
@@ -598,67 +687,21 @@ export class GoogleProvider extends BaseProvider {
               choices: [{
                 index: 0,
                 delta: {},
-                finish_reason: sawToolCalls ? 'tool_calls' : 'stop',
+                finish_reason: sawToolCalls ? 'tool_calls' : toGeminiFinishReason(candidate.finishReason),
               }],
             };
+            return;
           }
-          return;
-        }
-
-        // Skip malformed SSE frames instead of aborting the whole stream.
-        // Matches the defensive parse in openai-compat / cohere / cloudflare:
-        // a single corrupt chunk shouldn't take down the rest of the response.
-        let chunk: GeminiResponse;
-        try {
-          chunk = JSON.parse(raw) as GeminiResponse;
-        } catch {
-          continue;
-        }
-        const candidate = chunk.candidates?.[0];
-        const parts = candidate?.content?.parts ?? [];
-
-        const text = extractText(parts);
-        const toolCalls = extractToolCalls(parts).filter(call => {
-          const key = `${call.id}:${call.function.name}:${call.function.arguments}`;
-          if (seenToolCallKeys.has(key)) return false;
-          seenToolCallKeys.add(key);
-          return true;
-        });
-
-        if ((text && text.length > 0) || toolCalls.length > 0) {
-          sawToolCalls = sawToolCalls || toolCalls.length > 0;
-          yield {
-            id,
-            object: 'chat.completion.chunk',
-            created: Math.floor(Date.now() / 1000),
-            model: modelId,
-            choices: [{
-              index: 0,
-              delta: {
-                ...(text ? { content: text } : {}),
-                ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
-              },
-              finish_reason: null,
-            }],
-          };
-        }
-
-        if (candidate?.finishReason && !emittedFinish) {
-          emittedFinish = true;
-          yield {
-            id,
-            object: 'chat.completion.chunk',
-            created: Math.floor(Date.now() / 1000),
-            model: modelId,
-            choices: [{
-              index: 0,
-              delta: {},
-              finish_reason: sawToolCalls ? 'tool_calls' : toGeminiFinishReason(candidate.finishReason),
-            }],
-          };
-          return;
         }
       }
+    } finally {
+      // Runs on normal completion, on the early returns above, AND when the
+      // consumer abandons the generator mid-stream (a client disconnect breaks
+      // the route pump's for-await, which calls gen.return() at the yield
+      // point). Without it the Gemini generation kept running upstream —
+      // quota burning with nobody reading — because this adapter reads the
+      // body itself instead of going through readSseStream's shared cleanup.
+      reader.cancel().catch(() => { /* upstream already gone */ });
     }
 
     if (!emittedFinish) {

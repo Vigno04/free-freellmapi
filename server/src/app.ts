@@ -19,6 +19,7 @@ import { catalogsRouter } from './routes/catalogs.js';
 import { cacheRouter } from './routes/cache.js';
 import { authRouter } from './routes/auth.js';
 import { docsRouter } from './routes/docs.js';
+import { mcpRouter } from './routes/mcp.js';
 import { requireAuth } from './middleware/requireAuth.js';
 import { createProxyRateLimiter } from './middleware/rateLimit.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -100,6 +101,14 @@ export function createApp(config?: Config) {
   app.use('/v1', proxyRouter);
   // OpenAI Responses API shim (Codex CLI requires wire_api="responses"; see #96)
   app.use('/v1', responsesRouter);
+
+  // MCP server (Model Context Protocol over stateless Streamable HTTP):
+  // gateway introspection tools for MCP-speaking agents. Unified-key auth,
+  // like /v1 — NOT behind the dashboard session gate. Same per-IP limiter as
+  // /v1 (its own bucket): both surfaces guard the same unified key, so an
+  // unauthenticated brute-force must not get a free throttle-less oracle here.
+  app.use('/mcp', createProxyRateLimiter(cfg.proxyRateLimitRpm));
+  app.use('/mcp', mcpRouter);
 
   // Health check
   app.get('/api/ping', (_req, res) => {
