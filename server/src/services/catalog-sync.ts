@@ -542,20 +542,29 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     modelProviderSlugs.push(providerSlug);
   }
 
-  // --- Fallback limit scraping for missing limits ---
-  const slugsToFetch = new Set<string>();
-  for (let i = 0; i < models.length; i++) {
-    const lim = models[i].limits;
-    if (lim && lim.rpm === null && lim.rpd === null && lim.tpm === null && lim.tpd === null) {
-      slugsToFetch.add(modelProviderSlugs[i]);
+  // --- Comprehensive Provider Scraping (Limits, Credits & Missing Models) ---
+  console.log(`[Sync] Fetching all providers to extract limits and missing models...`);
+  const provRes = await fetch('https://freellm.net/providers', { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+  const allProviders = new Set<string>();
+  if (provRes.ok) {
+    const provHtml = await provRes.text();
+    const regex = /href="\/providers\/([^"]+)"/g;
+    let match;
+    while ((match = regex.exec(provHtml)) !== null) {
+      if (!match[1].includes('#')) allProviders.add(match[1]);
     }
   }
 
-  const defaultLimitsBySlug: Record<string, { rpm: number | null, rpd: number | null, tpm: number | null, tpd: number | null }> = {};
-  
-  if (slugsToFetch.size > 0) {
-    console.log(`[Sync] Fetching default limits for ${slugsToFetch.size} providers...`);
-    const promises = Array.from(slugsToFetch).map(async slug => {
+  // Ensure we also check any provider we found from the models table
+  for (const slug of modelProviderSlugs) {
+    if (slug) allProviders.add(slug);
+  }
+
+  const defaultLimitsBySlug: Record<string, { rpm: number | null, rpd: number | null, tpm: number | null, tpd: number | null, credits: number | null }> = {};
+  const modelsByProvider: Record<string, string[]> = {};
+
+  if (allProviders.size > 0) {
+    const promises = Array.from(allProviders).map(async slug => {
       try {
         const res = await fetch(`https://freellm.net/providers/${slug}`, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
         if (!res.ok) return;
@@ -565,25 +574,83 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
         const rpdMatch = text.match(/(\d+(?:,\d+)?)\s*(?:RPD|req\/day|requests? per day)/i);
         const tpmMatch = text.match(/(\d+(?:,\d+)?)\s*TPM/i);
         const tpdMatch = text.match(/(\d+(?:,\d+)?)\s*TPD/i);
+        const creditsMatch = text.match(/\$(\d+(?:,\d+)?(?:\.\d+)?)\s*(?:of\s*)?credit/i) || text.match(/credit.*?\$(\d+(?:,\d+)?(?:\.\d+)?)/i);
+        
         defaultLimitsBySlug[slug] = {
           rpm: rpmMatch ? parseInt(rpmMatch[1].replace(/,/g, ''), 10) : null,
           rpd: rpdMatch ? parseInt(rpdMatch[1].replace(/,/g, ''), 10) : null,
           tpm: tpmMatch ? parseInt(tpmMatch[1].replace(/,/g, ''), 10) : null,
           tpd: tpdMatch ? parseInt(tpdMatch[1].replace(/,/g, ''), 10) : null,
+          credits: creditsMatch ? parseFloat(creditsMatch[1].replace(/,/g, '')) : null,
         };
+
+        const providerModels: string[] = [];
+        const modelRegex = /href="\/models\/[^/]+\/([^"]+)"/g;
+        let mMatch;
+        while ((mMatch = modelRegex.exec(html)) !== null) {
+          if (!providerModels.includes(mMatch[1])) {
+            providerModels.push(mMatch[1]);
+          }
+        }
+        modelsByProvider[slug] = providerModels;
       } catch (err) {
-        console.warn(`[Sync] Failed to fetch limits for ${slug}: ${err}`);
+        console.warn(`[Sync] Failed to fetch data for provider ${slug}: ${err}`);
       }
     });
     await Promise.allSettled(promises);
   }
 
+  // Add missing models found on provider pages that weren't in the main models table
+  for (const [slug, providerModels] of Object.entries(modelsByProvider)) {
+    const platform = platformMap[slug];
+    if (!platform) continue;
+    
+    for (const mSlug of providerModels) {
+      // Look up API Model ID
+      let apiModelId = pgLookup[`${slug}:${mSlug}`];
+      if (!apiModelId) {
+        if (platform === 'openrouter') {
+          apiModelId = mSlug.replace('-', '/');
+          if (!apiModelId.endsWith(':free')) apiModelId += ':free';
+        } else if (platform === 'cloudflare') {
+          apiModelId = mSlug.startsWith('cf-') ? '@cf/' + mSlug.substring(3).replace('-', '/') : mSlug;
+        } else {
+          apiModelId = mSlug;
+        }
+      }
+
+      const existingIndex = models.findIndex(m => m.platform === platform && (m.modelId === apiModelId || m.modelId === mSlug));
+      if (existingIndex === -1) {
+        models.push({
+          platform,
+          modelId: apiModelId,
+          displayName: mSlug,
+          intelligenceRank: 50,
+          speedRank: 50,
+          sizeLabel: 'Free',
+          limits: { rpm: null, rpd: null, tpm: null, tpd: null },
+          monthlyTokenBudget: '',
+          contextWindow: null,
+          enabled: true,
+          supportsVision: false,
+          supportsTools: true,
+          modality: 'text'
+        });
+        modelProviderSlugs.push(slug);
+      }
+    }
+  }
+
+  // Apply default limits and credits to all models
   for (let i = 0; i < models.length; i++) {
     const lim = models[i].limits;
-    if (lim && lim.rpm === null && lim.rpd === null && lim.tpm === null && lim.tpd === null) {
-      const def = defaultLimitsBySlug[modelProviderSlugs[i]];
-      if (def) {
-        models[i].limits = { ...def };
+    const def = defaultLimitsBySlug[modelProviderSlugs[i]];
+    if (def) {
+      if (lim && lim.rpm === null && lim.rpd === null && lim.tpm === null && lim.tpd === null) {
+        models[i].limits = { rpm: def.rpm, rpd: def.rpd, tpm: def.tpm, tpd: def.tpd };
+      }
+      if (def.credits !== null && !models[i].monthlyTokenBudget) {
+        models[i].monthlyTokenBudget = `$${def.credits.toFixed(2)} Credit`;
       }
     }
   }

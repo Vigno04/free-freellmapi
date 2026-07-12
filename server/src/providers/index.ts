@@ -429,7 +429,23 @@ export function resolveProvider(platform: Platform, baseUrl?: string | null): Ba
       timeoutMs: CUSTOM_PROVIDER_TIMEOUT_MS,
     });
   }
-  return providers.get(platform);
+
+  const provider = providers.get(platform);
+  if (!provider) return undefined;
+
+  // Alibaba allows overriding the base URL since users might be on different regional endpoints
+  if (platform === 'alibaba') {
+    const trimmed = baseUrl?.trim();
+    if (trimmed) {
+      return new OpenAICompatProvider({
+        platform: 'alibaba',
+        name: 'Alibaba Cloud',
+        baseUrl: trimmed,
+      });
+    }
+  }
+
+  return provider;
 }
 
 export function getAllProviders(): BaseProvider[] {
