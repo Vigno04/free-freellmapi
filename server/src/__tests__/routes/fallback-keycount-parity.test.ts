@@ -64,7 +64,7 @@ describe('fallback key-count filter parity (#456)', () => {
     expect(usageRow).toBeDefined();
     // Both scale parseBudget('~1M') by the SAME usable key count (1), so the
     // pooled budgets match. Before the fix, GET / used the enabled=2 count.
-    expect(listRow.monthlyTokenBudgetTokens).toBe(usageRow.budget);
-    expect(usageRow.budget).toBe(1_000_000);
+    expect(listRow.monthlyTokenBudgetTokens).toBe(usageRow.fullBudget);
+    expect(usageRow.fullBudget).toBe(1_000_000);
   });
 });
