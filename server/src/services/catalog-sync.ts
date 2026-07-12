@@ -11,6 +11,7 @@ import {
   deleteTombstonedCatalogModels,
   isCatalogModelTombstoned,
 } from './model-state.js';
+import { normalizeGroupKey } from './model-groups.js';
 
 // Generative-media modalities are routed into the separate media_models table
 // (see services/media.ts), never into the chat `models` table.
@@ -49,9 +50,26 @@ export const MIN_CATALOG_VERSION = '2026.06.07';
 
 export const SETTING_LICENSE_KEY = 'premium_license_key';
 export const SETTING_LICENSE_STATUS = 'premium_license_status';
-export const SETTING_CATALOG_SOURCE = 'catalog_source';
+export const SETTING_CATALOG_SOURCES = 'catalog_sources';
+export const SETTING_CATALOG_SOURCE = 'catalog_source'; // legacy
+export const SETTING_CATALOG_FALLBACK_SOURCES = 'catalog_fallback_sources'; // legacy
 export const SETTING_CATALOG_SYNC_INTERVAL = 'catalog_sync_interval';
-export const SETTING_CATALOG_FALLBACK_SOURCES = 'catalog_fallback_sources';
+
+export function getCatalogSources(): string[] {
+  const json = getSetting(SETTING_CATALOG_SOURCES);
+  if (json) {
+    try {
+      const parsed = JSON.parse(json);
+      if (Array.isArray(parsed)) return parsed;
+    } catch {}
+  }
+  // Migration fallback
+  const primary = getSetting(SETTING_CATALOG_SOURCE) || SOURCE_DEFAULT;
+  const fallbacksStr = getSetting(SETTING_CATALOG_FALLBACK_SOURCES) || '';
+  const fallbacks = fallbacksStr.split(',').map(s => s.trim()).filter(Boolean);
+  const unique = Array.from(new Set([primary, ...fallbacks]));
+  return unique;
+}
 
 const DEFAULT_SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000; // twice daily
 const BOOT_DELAY_MS = 10_000; // 10s wait on cold start
@@ -521,13 +539,14 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
 export async function fetchDefaultCatalog(force = false): Promise<{ catalog: Catalog | null, isNotModified: boolean, rawBytes?: Buffer, error?: Error }> {
   const key = getSetting(SETTING_LICENSE_KEY);
   const applied = getSetting(SETTING_APPLIED_VERSION);
+  const tier = getSetting(SETTING_APPLIED_TIER);
   try {
     const headers: Record<string, string> = {};
     if (key) headers.Authorization = `Bearer ${key}`;
     const url = new URL(`${catalogBaseUrl()}/v1/latest`);
     if (applied && !force) url.searchParams.set('since', applied);
 
-    const res = await fetch(url, { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+    const res = await fetch(url.toString(), { headers, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
 
     if (res.status === 304) {
       return { catalog: null, isNotModified: true };
@@ -549,132 +568,173 @@ export async function fetchDefaultCatalog(force = false): Promise<{ catalog: Cat
   }
 }
 
-export async function syncCatalog(force = false): Promise<SyncResult> {
-  const db = getDb();
-  const primarySource = getSetting(SETTING_CATALOG_SOURCE) || SOURCE_DEFAULT;
-  const fallbacksStr = getSetting(SETTING_CATALOG_FALLBACK_SOURCES) || '';
-  const fallbackSources = fallbacksStr.split(',').map(s => s.trim()).filter(Boolean);
-
-  let primaryCatalog: Catalog | null = null;
-  let rawDefaultBytes: Buffer | null = null;
-  let defaultTier = getSetting(SETTING_APPLIED_TIER);
-  let defaultVersion = getSetting(SETTING_APPLIED_VERSION);
-
-  // 1. Fetch primary
-  try {
-    if (primarySource === SOURCE_FREELLM) {
+export async function fetchSource(source: string, force: boolean): Promise<{ catalog: Catalog | null, isNotModified: boolean, rawBytes?: Buffer, error?: Error }> {
+  if (source === SOURCE_FREELLM) {
+    try {
       const models = await fetchFreellmModels();
       const d = new Date();
       const versionStr = `${d.getUTCFullYear()}.${String(d.getUTCMonth() + 1).padStart(2, '0')}.${String(d.getUTCDate()).padStart(2, '0')}`;
-      primaryCatalog = {
-        version: versionStr,
-        generatedAt: d.toISOString(),
-        tier: 'live',
-        models: models,
-        quirks: []
+      return {
+        catalog: { version: versionStr, generatedAt: d.toISOString(), tier: 'live', models, quirks: [] },
+        isNotModified: false
       };
-    } else {
-      const result = await fetchDefaultCatalog(force);
-      if (result.error) {
-        throw result.error;
-      }
-      if (result.isNotModified) {
-        // Not modified, no force, we can short circuit
-        setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
-        setSetting(SETTING_LAST_ERROR, '');
+    } catch (err) {
+      return { catalog: null, isNotModified: false, error: err instanceof Error ? err : new Error(String(err)) };
+    }
+  } else if (source === SOURCE_DEFAULT) {
+    return fetchDefaultCatalog(force);
+  } else if (source.startsWith('http://') || source.startsWith('https://')) {
+    try {
+      const res = await fetch(source, { signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = await res.json();
+      if (!isCatalog(body)) throw new Error('catalog payload has unexpected shape');
+      return { catalog: body, isNotModified: false };
+    } catch (err) {
+      return { catalog: null, isNotModified: false, error: err instanceof Error ? err : new Error(String(err)) };
+    }
+  }
+  return { catalog: null, isNotModified: false, error: new Error(`Unknown source: ${source}`) };
+}
+
+function mergeFields(existing: CatalogModel, m: CatalogModel) {
+  if (existing.intelligenceRank === 50 && m.intelligenceRank !== 50) existing.intelligenceRank = m.intelligenceRank;
+  if (existing.speedRank === 50 && m.speedRank !== 50) existing.speedRank = m.speedRank;
+  if (existing.sizeLabel === 'Free' && m.sizeLabel !== 'Free') existing.sizeLabel = m.sizeLabel;
+  if (!existing.limits) existing.limits = { rpm: null, rpd: null, tpm: null, tpd: null };
+  if (m.limits) {
+    if (existing.limits.rpm === null && m.limits.rpm !== null) existing.limits.rpm = m.limits.rpm;
+    if (existing.limits.rpd === null && m.limits.rpd !== null) existing.limits.rpd = m.limits.rpd;
+    if (existing.limits.tpm === null && m.limits.tpm !== null) existing.limits.tpm = m.limits.tpm;
+    if (existing.limits.tpd === null && m.limits.tpd !== null) existing.limits.tpd = m.limits.tpd;
+  }
+  if (existing.contextWindow === null && m.contextWindow !== null) existing.contextWindow = m.contextWindow;
+  if (!existing.monthlyTokenBudget && m.monthlyTokenBudget) existing.monthlyTokenBudget = m.monthlyTokenBudget;
+  if ((!existing.modality || existing.modality === 'text') && m.modality) existing.modality = m.modality;
+  if (!existing.mediaNote && m.mediaNote) existing.mediaNote = m.mediaNote;
+}
+
+export async function syncCatalog(force = false): Promise<SyncResult> {
+  const db = getDb();
+  const sources = getCatalogSources();
+
+  let appliedVersion: string | undefined = getSetting(SETTING_APPLIED_VERSION);
+  let appliedTier: string | undefined = getSetting(SETTING_APPLIED_TIER);
+  let rawDefaultBytes: Buffer | null = null;
+
+  const finalModels = new Map<string, CatalogModel>();
+  const firstModelIdForGroup = new Map<string, string>();
+  const mergedQuirks: Catalog['quirks'] = [];
+
+  let hadError = false;
+  let lastErrMsg = '';
+
+  for (const source of sources) {
+    const isPrimary = source === sources[0];
+    const isDefault = source === SOURCE_DEFAULT;
+
+    // Only skip via 304 if this is the ONLY source and it's default
+    const shouldForce = (isPrimary && isDefault && sources.length === 1) ? force : true;
+    
+    const result = await fetchSource(source, shouldForce);
+    
+    if (result.error) {
+      console.warn(`[catalog-sync] fetch failed for ${source}:`, result.error.message);
+      hadError = true;
+      lastErrMsg = result.error.message;
+      continue;
+    }
+
+    if (isPrimary && isDefault) {
+      if (result.isNotModified && !force && sources.length === 1) {
         return { ok: true, action: 'up_to_date', version: getSetting(SETTING_APPLIED_VERSION) ?? undefined };
       }
-      
-      const catalog = result.catalog!;
-      if (catalog.version < MIN_CATALOG_VERSION) {
-        setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
-        setSetting(SETTING_LAST_ERROR, '');
-        return { ok: true, action: 'skipped_older', version: catalog.version, tier: catalog.tier };
+      if (result.catalog && result.catalog.version < MIN_CATALOG_VERSION && sources.length === 1) {
+        return { ok: true, action: 'skipped_older', version: result.catalog.version, tier: result.catalog.tier };
       }
-
-      // Check if same as applied
-      const sameAsApplied = getSetting(SETTING_APPLIED_VERSION) === catalog.version && getSetting(SETTING_APPLIED_TIER) === catalog.tier;
-      if (sameAsApplied && !force) {
-        setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
-        setSetting(SETTING_LAST_ERROR, '');
-        return { ok: true, action: 'up_to_date', version: catalog.version, tier: catalog.tier };
-      }
-
-      primaryCatalog = catalog;
-      rawDefaultBytes = result.rawBytes || null;
-      defaultTier = catalog.tier;
-      defaultVersion = catalog.version;
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.warn(`[catalog-sync] fetch failed: ${message}`);
-    setSetting(SETTING_LAST_ERROR, message);
-    return { ok: false, action: 'error', detail: message };
-  }
-
-  if (!primaryCatalog) {
-    return { ok: false, action: 'error', detail: 'Unknown error resolving primary catalog' };
-  }
-
-  // 2. Fetch fallbacks
-  const fallbackModelsMap = new Map<string, CatalogModel>();
-  for (const fallback of fallbackSources) {
-    if (fallback === primarySource) continue;
-    try {
-      if (fallback === SOURCE_FREELLM) {
-        const models = await fetchFreellmModels();
-        for (const m of models) fallbackModelsMap.set(`${m.platform}:${m.modelId}`, m);
-      } else if (fallback === SOURCE_DEFAULT) {
-        const result = await fetchDefaultCatalog(true); // force to skip 304
+      if (result.catalog) {
+        appliedVersion = result.catalog.version;
+        appliedTier = result.catalog.tier;
+        rawDefaultBytes = result.rawBytes || null;
+      } else {
+        // The fallback_config rows inserted by 000000_legacy_baseline migration
+        // have an applied tier of 'legacy'. This is a sentinel value that means
+        // the app just booted fresh. If we haven't synced yet, this is our only
+        // chance to insert the bundled JSON models into the chat router.
+        console.warn(`[catalog-sync] fresh boot: applying bundled baseline catalog`);
+        const result = await fetchDefaultCatalog(true);
         if (result.catalog) {
-          for (const m of result.catalog.models) fallbackModelsMap.set(`${m.platform}:${m.modelId}`, m);
+           applyCatalog(db, result.catalog);
         }
       }
-    } catch (err) {
-      console.warn(`[catalog-sync] Failed to fetch fallback source ${fallback}`, err);
+    } else if (isPrimary && source === SOURCE_FREELLM) {
+      if (result.catalog) {
+        appliedVersion = result.catalog.version;
+        appliedTier = result.catalog.tier;
+      }
+    }
+
+    if (!result.catalog) continue;
+
+    for (const q of result.catalog.quirks) {
+      if (!mergedQuirks.find(existing => existing.slug === q.slug)) {
+        mergedQuirks.push(q);
+      }
+    }
+
+    for (const m of result.catalog.models) {
+      const exactKey = `${m.platform}:${m.modelId}`;
+      const groupKey = `${m.platform}:${normalizeGroupKey(m.displayName)}`;
+
+      if (finalModels.has(exactKey)) {
+        mergeFields(finalModels.get(exactKey)!, m);
+      } else {
+        if (firstModelIdForGroup.has(groupKey)) {
+          const primaryModelId = firstModelIdForGroup.get(groupKey)!;
+          const primaryExactKey = `${m.platform}:${primaryModelId}`;
+          const existing = finalModels.get(primaryExactKey);
+          if (existing) mergeFields(existing, m);
+        } else {
+          finalModels.set(exactKey, m);
+          if (!firstModelIdForGroup.has(groupKey)) {
+            firstModelIdForGroup.set(groupKey, m.modelId);
+          }
+        }
+      }
     }
   }
 
-  // 3. Merge data
-  for (const pm of primaryCatalog.models) {
-    const fm = fallbackModelsMap.get(`${pm.platform}:${pm.modelId}`);
-    if (fm) {
-      if (!pm.limits) pm.limits = { rpm: null, rpd: null, tpm: null, tpd: null };
-      if (!fm.limits) fm.limits = { rpm: null, rpd: null, tpm: null, tpd: null };
-      
-      if (pm.intelligenceRank === 50 && fm.intelligenceRank !== 50) pm.intelligenceRank = fm.intelligenceRank;
-      if (pm.speedRank === 50 && fm.speedRank !== 50) pm.speedRank = fm.speedRank;
-      if (pm.sizeLabel === 'Free' && fm.sizeLabel !== 'Free') pm.sizeLabel = fm.sizeLabel;
-      if (pm.limits.rpm === null && fm.limits.rpm !== null) pm.limits.rpm = fm.limits.rpm;
-      if (pm.limits.rpd === null && fm.limits.rpd !== null) pm.limits.rpd = fm.limits.rpd;
-      if (pm.limits.tpm === null && fm.limits.tpm !== null) pm.limits.tpm = fm.limits.tpm;
-      if (pm.limits.tpd === null && fm.limits.tpd !== null) pm.limits.tpd = fm.limits.tpd;
-      if (pm.contextWindow === null && fm.contextWindow !== null) pm.contextWindow = fm.contextWindow;
-      if (pm.monthlyTokenBudget === '' && fm.monthlyTokenBudget) pm.monthlyTokenBudget = fm.monthlyTokenBudget;
-      if ((!pm.modality || pm.modality === 'text') && fm.modality) pm.modality = fm.modality;
-      if (!pm.mediaNote && fm.mediaNote) pm.mediaNote = fm.mediaNote;
-    }
+  if (finalModels.size === 0 && hadError) {
+    setSetting(SETTING_LAST_ERROR, lastErrMsg);
+    return { ok: false, action: 'error', detail: lastErrMsg };
   }
 
-  // 4. Apply
+  const finalCatalog: Catalog = {
+    version: appliedVersion || '1.0.0',
+    tier: (appliedTier as 'live' | 'monthly') || 'live',
+    generatedAt: new Date().toISOString(),
+    models: Array.from(finalModels.values()),
+    quirks: mergedQuirks
+  };
+
   try {
-    const counts = applyCatalog(db, primaryCatalog);
+    const counts = applyCatalog(db, finalCatalog);
     
     // Manage Settings
-    if (primarySource === SOURCE_DEFAULT) {
-      setSetting(SETTING_APPLIED_VERSION, primaryCatalog.version);
-      setSetting(SETTING_APPLIED_TIER, primaryCatalog.tier);
+    if (sources[0] === SOURCE_DEFAULT) {
+      setSetting(SETTING_APPLIED_VERSION, finalCatalog.version);
+      setSetting(SETTING_APPLIED_TIER, finalCatalog.tier);
       if (rawDefaultBytes) {
         setSetting(SETTING_APPLIED_JSON, rawDefaultBytes.toString('utf8'));
       }
     } else {
-      setSetting(SETTING_APPLIED_VERSION, primaryCatalog.version);
-      setSetting(SETTING_APPLIED_TIER, primaryCatalog.tier);
+      setSetting(SETTING_APPLIED_VERSION, finalCatalog.version);
+      setSetting(SETTING_APPLIED_TIER, finalCatalog.tier);
       db.prepare('DELETE FROM settings WHERE key = ?').run(SETTING_APPLIED_JSON);
     }
 
     console.log(
-      `[catalog-sync] applied ${primaryCatalog.tier} v${primaryCatalog.version}: ` +
+      `[catalog-sync] applied ${finalCatalog.tier} v${finalCatalog.version}: ` +
         `${counts.updated} updated, ${counts.inserted} new, ${counts.removed} removed, ` +
         `${counts.quirks} quirks` +
         (counts.skippedUnknownPlatform ? `, ${counts.skippedUnknownPlatform} skipped (unknown platform)` : ''),
@@ -682,7 +742,7 @@ export async function syncCatalog(force = false): Promise<SyncResult> {
     
     setSetting(SETTING_LAST_SYNC_MS, String(Date.now()));
     setSetting(SETTING_LAST_ERROR, '');
-    return { ok: true, action: 'applied', version: primaryCatalog.version, tier: primaryCatalog.tier, counts };
+    return { ok: true, action: 'applied', version: finalCatalog.version, tier: finalCatalog.tier, counts };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.warn(`[catalog-sync] apply failed: ${message}`);

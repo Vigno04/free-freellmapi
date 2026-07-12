@@ -4,11 +4,11 @@ import { getSetting, setSetting, getDb } from '../db/index.js';
 import {
   SETTING_LICENSE_KEY,
   SETTING_LICENSE_STATUS,
-  SETTING_CATALOG_SOURCE,
+  SETTING_CATALOG_SOURCES,
   SETTING_CATALOG_SYNC_INTERVAL,
-  SETTING_CATALOG_FALLBACK_SOURCES,
   catalogBaseUrl,
   getCachedLicenseStatus,
+  getCatalogSources,
   getSyncState,
   refreshLicenseStatus,
   syncCatalog,
@@ -30,8 +30,7 @@ function statusPayload() {
   const embeddingsCountRow = db.prepare('SELECT COUNT(*) as c FROM embedding_models').get() as { c: number };
   const totalModels = (modelsCountRow?.c || 0) + (mediaCountRow?.c || 0) + (embeddingsCountRow?.c || 0);
   const interval = getSetting(SETTING_CATALOG_SYNC_INTERVAL) || '12h';
-  const fallbacksStr = getSetting(SETTING_CATALOG_FALLBACK_SOURCES) || '';
-  const fallbackSources = fallbacksStr.split(',').filter(Boolean);
+  const sources = getCatalogSources();
 
   return {
     hasKey: Boolean(key),
@@ -40,7 +39,7 @@ function statusPayload() {
     catalog: getSyncState(),
     totalModels,
     interval,
-    fallbackSources,
+    sources,
     // Where "Go Premium" / "recover key" links point. Overridable for forks.
     siteUrl: (process.env.PREMIUM_SITE_URL ?? 'https://freellmapi.co').replace(/\/$/, ''),
   };
@@ -106,21 +105,16 @@ catalogsRouter.delete('/key', async (_req: Request, res: Response) => {
 });
 
 /** POST /api/catalogs/sync — manual "check for updates now". */
-catalogsRouter.post('/sync', async (req: Request, res: Response) => {
-  const source = typeof req.body?.source === 'string' ? req.body.source.trim() : null;
-  if (source) {
-    setSetting(SETTING_CATALOG_SOURCE, source);
-  }
-  
+catalogsRouter.post('/sync', async (_req: Request, res: Response) => {
   await refreshLicenseStatus();
   const sync = await syncCatalog(true);
   res.json({ ...statusPayload(), sync });
 });
 
-/** POST /api/catalogs/fallbacks — set hybrid fill fallbacks. */
-catalogsRouter.post('/fallbacks', async (req: Request, res: Response) => {
+/** POST /api/catalogs/sources — set the prioritized list of catalog sources. */
+catalogsRouter.post('/sources', async (req: Request, res: Response) => {
   const sources = Array.isArray(req.body?.sources) ? req.body.sources : [];
-  setSetting(SETTING_CATALOG_FALLBACK_SOURCES, sources.join(','));
+  setSetting(SETTING_CATALOG_SOURCES, JSON.stringify(sources));
   
   const sync = await syncCatalog(true);
   res.json({ ...statusPayload(), sync });

@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ExternalLink, RefreshCw, Sparkles } from 'lucide-react'
+import { ExternalLink, RefreshCw, Sparkles, ArrowUp, ArrowDown, X, Plus } from 'lucide-react'
 import { apiFetch } from '@/lib/api'
 import { PageHeader } from '@/components/page-header'
 import { Button } from '@/components/ui/button'
@@ -37,12 +37,11 @@ interface CatalogStatus {
   catalog: CatalogSyncState
   totalModels: number
   interval: string
-  fallbackSources: string[]
+  sources: string[]
   siteUrl: string
 }
 
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuGroup } from '@/components/ui/dropdown-menu'
 
 function fmtWhen(ms: number | null): string | undefined {
   if (!ms) return undefined
@@ -59,6 +58,7 @@ export default function CatalogPage() {
   const queryClient = useQueryClient()
   const [keyInput, setKeyInput] = useState('')
   const [activateAttempted, setActivateAttempted] = useState(false)
+  const [newSourceUrl, setNewSourceUrl] = useState('')
 
   const { data, isLoading } = useQuery<CatalogStatus>({
     queryKey: ['catalogs'],
@@ -98,8 +98,8 @@ export default function CatalogPage() {
     onSuccess: invalidate,
   })
 
-  const setFallbacks = useMutation({
-    mutationFn: (sources: string[]) => apiFetch('/api/catalogs/fallbacks', { method: 'POST', body: JSON.stringify({ sources }) }),
+  const setSources = useMutation({
+    mutationFn: (sources: string[]) => apiFetch('/api/catalogs/sources', { method: 'POST', body: JSON.stringify({ sources }) }),
     onSuccess: invalidate,
   })
 
@@ -124,7 +124,6 @@ export default function CatalogPage() {
   }
 
   const { hasKey, maskedKey, license, catalog, totalModels, siteUrl } = data
-  const live = catalog.appliedTier === 'live'
   const licensed = hasKey && license?.valid
 
   return (
@@ -143,85 +142,133 @@ export default function CatalogPage() {
       <div className="space-y-8">
         {/* Catalog source state */}
         <section>
-          <h2 className="text-sm font-medium mb-3">{t('catalog.sourceTitle')}</h2>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-medium">{t('catalog.sourceTitle')}</h2>
+            <span className="text-xs text-muted-foreground">{t('catalog.lastChecked', { when: fmtWhen(catalog.lastSyncMs) ?? t('common.never') })}</span>
+          </div>
+          
           <div className="rounded-3xl border bg-card p-5 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-3">
-              <div className="flex items-center gap-4">
-                <Select
-                  value={catalog.source}
-                  onValueChange={(val) => syncNow.mutate(val || undefined)}
-                  disabled={syncNow.isPending}
-                >
-                  <SelectTrigger className="w-[280px]">
-                    <SelectValue placeholder="Select a catalog source" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="default">Default Premium Catalog</SelectItem>
-                    <SelectItem value="freellm">Awesome Free LLM APIs (freellm.net)</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select
-                  value={data.interval}
-                  onValueChange={(val) => setSyncInterval.mutate(val || '12h')}
-                  disabled={setSyncInterval.isPending}
-                >
-                  <SelectTrigger className="w-[180px]">
-                    <SelectValue placeholder="Update Frequency" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="12h">Every 12 Hours</SelectItem>
-                    <SelectItem value="24h">Every 24 Hours</SelectItem>
-                    <SelectItem value="72h">Every 72 Hours</SelectItem>
-                    <SelectItem value="weekly">Weekly</SelectItem>
-                  </SelectContent>
-                </Select>
-                <DropdownMenu>
-                  <DropdownMenuTrigger>
-                    <Button variant="outline" size="sm" className="h-10 border-dashed" disabled={setFallbacks.isPending}>
-                      Hybrid Fallbacks {data.fallbackSources.length > 0 ? `(${data.fallbackSources.length})` : ''}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent className="w-64">
-                    <DropdownMenuGroup>
-                      <DropdownMenuLabel>Use missing data from...</DropdownMenuLabel>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuCheckboxItem
-                        checked={data.fallbackSources.includes('default')}
-                        disabled={catalog.source === 'default'}
-                      onCheckedChange={(checked) => {
-                        const current = new Set(data.fallbackSources);
-                        if (checked) current.add('default'); else current.delete('default');
-                        setFallbacks.mutate(Array.from(current));
-                      }}
-                    >
-                      Default Premium Catalog
-                    </DropdownMenuCheckboxItem>
-                    <DropdownMenuCheckboxItem
-                      checked={data.fallbackSources.includes('freellm')}
-                      disabled={catalog.source === 'freellm'}
-                      onCheckedChange={(checked) => {
-                        const current = new Set(data.fallbackSources);
-                        if (checked) current.add('freellm'); else current.delete('freellm');
-                        setFallbacks.mutate(Array.from(current));
-                      }}
-                    >
-                      Awesome Free LLM APIs
-                    </DropdownMenuCheckboxItem>
-                    </DropdownMenuGroup>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-                <Badge variant="secondary" className="font-mono text-[12px]">
-                  {totalModels} {t('catalog.modelsAvailable')}
-                </Badge>
-              </div>
-              <span className="text-xs text-muted-foreground">{t('catalog.lastChecked', { when: fmtWhen(catalog.lastSyncMs) ?? t('common.never') })}</span>
+            <div className="flex items-center justify-between mb-4">
+              <Badge variant="secondary" className="font-mono text-[12px]">
+                {totalModels} {t('catalog.modelsAvailable')}
+              </Badge>
+              <Select
+                value={data.interval}
+                onValueChange={(val) => setSyncInterval.mutate(val || '12h')}
+                disabled={setSyncInterval.isPending}
+              >
+                <SelectTrigger className="w-[180px] h-8 text-xs">
+                  <SelectValue placeholder="Update Frequency" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="12h">Every 12 Hours</SelectItem>
+                  <SelectItem value="24h">Every 24 Hours</SelectItem>
+                  <SelectItem value="72h">Every 72 Hours</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <p className="text-xs text-muted-foreground mt-3">
-              {catalog.source === 'freellm' 
-                ? 'Pulling the complete list of 600+ free models directly from freellm.net.'
-                : live
-                  ? t('catalog.liveDescription')
-                  : t('catalog.snapshotDescription')}
+
+            <div className="space-y-2">
+              <Label className="text-xs text-muted-foreground">Priority Ordered Sources (Top has highest priority)</Label>
+              {data.sources.map((source, idx) => (
+                <div key={`${source}-${idx}`} className="flex items-center gap-2 p-2 border rounded-md bg-background">
+                  <span className="flex-1 text-sm font-medium truncate">
+                    {source === 'default' ? 'Default Premium Catalog' : source === 'freellm' ? 'Awesome Free LLM APIs (freellm.net)' : source}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7"
+                      disabled={idx === 0 || setSources.isPending}
+                      onClick={() => {
+                        const newSources = [...data.sources];
+                        [newSources[idx - 1], newSources[idx]] = [newSources[idx], newSources[idx - 1]];
+                        setSources.mutate(newSources);
+                      }}
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7"
+                      disabled={idx === data.sources.length - 1 || setSources.isPending}
+                      onClick={() => {
+                        const newSources = [...data.sources];
+                        [newSources[idx + 1], newSources[idx]] = [newSources[idx], newSources[idx + 1]];
+                        setSources.mutate(newSources);
+                      }}
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost" size="icon" className="h-7 w-7 text-destructive"
+                      disabled={setSources.isPending}
+                      onClick={() => {
+                        const newSources = data.sources.filter((_, i) => i !== idx);
+                        setSources.mutate(newSources);
+                      }}
+                    >
+                      <X className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              <div className="flex flex-col gap-3 mt-4 border-t pt-4">
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-2 block">Add predefined source</Label>
+                  <div className="flex flex-wrap gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      disabled={data.sources.includes('default') || setSources.isPending}
+                      onClick={() => setSources.mutate([...data.sources, 'default'])}
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Default Premium Catalog
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      disabled={data.sources.includes('freellm') || setSources.isPending}
+                      onClick={() => setSources.mutate([...data.sources, 'freellm'])}
+                    >
+                      <Plus className="h-4 w-4 mr-1" /> Awesome Free LLM APIs (freellm.net)
+                    </Button>
+                  </div>
+                </div>
+                
+                <div>
+                  <Label className="text-xs text-muted-foreground mb-2 block">Or add custom JSON URL</Label>
+                  <div className="flex items-center gap-2">
+                    <Input 
+                      placeholder="https://..." 
+                      className="h-9 text-sm"
+                      value={newSourceUrl}
+                      onChange={(e) => setNewSourceUrl(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && newSourceUrl.trim()) {
+                          setSources.mutate([...data.sources, newSourceUrl.trim()]);
+                          setNewSourceUrl('');
+                        }
+                      }}
+                    />
+                    <Button 
+                      size="sm" 
+                      className="h-9 shrink-0" 
+                      disabled={!newSourceUrl.trim() || setSources.isPending}
+                      onClick={() => {
+                        setSources.mutate([...data.sources, newSourceUrl.trim()]);
+                        setNewSourceUrl('');
+                      }}
+                    >
+                      <Plus className="h-4 w-4 mr-1" />
+                      Add Custom
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-4">
+              Models are merged from all sources. If a model exists in multiple catalogs, properties from higher priority sources take precedence.
             </p>
             {catalog.lastError && (
               <p className="text-destructive text-xs mt-2">{t('catalog.lastSyncProblem', { error: catalog.lastError })}</p>
@@ -230,7 +277,7 @@ export default function CatalogPage() {
         </section>
 
         {/* License */}
-        {catalog.source === 'default' && (
+        {data.sources.includes('default') && (
         <section>
           <h2 className="text-sm font-medium mb-3">{t('catalog.license')}</h2>
           {hasKey ? (

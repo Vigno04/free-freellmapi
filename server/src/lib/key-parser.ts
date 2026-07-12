@@ -35,6 +35,7 @@ export const PREFIX_MAP: Record<string, string> = {
   NARA_: 'nara',
   NARAROUTER_: 'nara',
   BYNARA_: 'nara',
+  'SK-NRY-': 'nara',
   AIHORDE_: 'aihorde',
 };
 
