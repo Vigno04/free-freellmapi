@@ -45,14 +45,15 @@ function recordUsage(
   kind: UsageKind,
   tokens: number,
   now: number,
-) {
-  withDb(db => {
+): boolean {
+  return withDb(db => {
     db.prepare(`
       INSERT INTO rate_limit_usage (platform, model_id, key_id, kind, tokens, created_at_ms)
       VALUES (?, ?, ?, ?, ?, ?)
     `).run(platform, modelId, keyId, kind, tokens, now);
     db.prepare('DELETE FROM rate_limit_usage WHERE created_at_ms <= ?').run(now - DAY);
-  });
+    return true;
+  }) ?? false;
 }
 
 function countPersistedRequests(
@@ -243,32 +244,37 @@ export function canUseProvider(platform: string, keyId: number, now = Date.now()
 
 export function recordRequest(platform: string, modelId: string, keyId: number) {
   const now = Date.now();
+  const dbOk = recordUsage(platform, modelId, keyId, 'request', 0, now);
 
-  const rpmKey = `${platform}:${modelId}:${keyId}:rpm`;
-  getWindow(rpmKey).timestamps.push(now);
+  if (!dbOk) {
+    const rpmKey = `${platform}:${modelId}:${keyId}:rpm`;
+    const rpmW = getWindow(rpmKey);
+    rpmW.timestamps.push(now);
+    if (now - rpmW.timestamps[0] > MINUTE) rpmW.timestamps = pruneTimestamps(rpmW.timestamps, MINUTE, now);
 
-  const rpdKey = `${platform}:${modelId}:${keyId}:rpd`;
-  getWindow(rpdKey).timestamps.push(now);
-
-  recordUsage(platform, modelId, keyId, 'request', 0, now);
+    const rpdKey = `${platform}:${modelId}:${keyId}:rpd`;
+    const rpdW = getWindow(rpdKey);
+    rpdW.timestamps.push(now);
+    if (now - rpdW.timestamps[0] > DAY) rpdW.timestamps = pruneTimestamps(rpdW.timestamps, DAY, now);
+  }
   clearNullLimitHits(platform, modelId, keyId);
 }
 
-export function recordTokens(
-  platform: string,
-  modelId: string,
-  keyId: number,
-  tokens: number,
-) {
+export function recordTokens(platform: string, modelId: string, keyId: number, tokens: number) {
   const now = Date.now();
+  const dbOk = recordUsage(platform, modelId, keyId, 'tokens', tokens, now);
 
-  const tpmKey = `${platform}:${modelId}:${keyId}:tpm`;
-  getWindow(tpmKey).tokenTimestamps.push({ ts: now, tokens });
+  if (!dbOk) {
+    const tpmKey = `${platform}:${modelId}:${keyId}:tpm`;
+    const tpmW = getWindow(tpmKey);
+    tpmW.tokenTimestamps.push({ ts: now, tokens });
+    if (now - tpmW.tokenTimestamps[0].ts > MINUTE) tpmW.tokenTimestamps = tpmW.tokenTimestamps.filter(t => t.ts > now - MINUTE);
 
-  const tpdKey = `${platform}:${modelId}:${keyId}:tpd`;
-  getWindow(tpdKey).tokenTimestamps.push({ ts: now, tokens });
-
-  recordUsage(platform, modelId, keyId, 'tokens', tokens, now);
+    const tpdKey = `${platform}:${modelId}:${keyId}:tpd`;
+    const tpdW = getWindow(tpdKey);
+    tpdW.tokenTimestamps.push({ ts: now, tokens });
+    if (now - tpdW.tokenTimestamps[0].ts > DAY) tpdW.tokenTimestamps = tpdW.tokenTimestamps.filter(t => t.ts > now - DAY);
+  }
 }
 
 // Cooldown: when a provider returns 429, block that model+key for a period

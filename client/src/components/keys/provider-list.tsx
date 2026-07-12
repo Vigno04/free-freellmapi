@@ -61,7 +61,7 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
     refetchInterval: 30000,
   })
 
-  const { data: usageData } = useQuery<{ platform: string; enabled: boolean; budget: number }[]>({
+  const { data: usageData } = useQuery<{ models: { platform: string; enabled: boolean; budget: number }[] }>({
     queryKey: ['token-usage'],
     queryFn: () => apiFetch('/api/fallback/token-usage'),
   })
@@ -178,7 +178,7 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
   })).filter(p => p.keys.length > 0)
 
   const providerBudgets = new Map<string, number>()
-  for (const m of usageData ?? []) {
+  for (const m of usageData?.models ?? []) {
     if (m.enabled && m.budget > 0) {
       providerBudgets.set(m.platform, (providerBudgets.get(m.platform) ?? 0) + m.budget)
     }

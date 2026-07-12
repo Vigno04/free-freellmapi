@@ -19,18 +19,29 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
   // height (column count — and so row count — depends on viewport width).
   const [expanded, setExpanded] = useState(false)
   const [collapsible, setCollapsible] = useState(false)
+  const [legendHeight, setLegendHeight] = useState<number | undefined>(undefined)
   const legendRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const el = legendRef.current
     if (!el) return
-    const check = () => setCollapsible(el.scrollHeight > LEGEND_COLLAPSED_PX + 1)
+    const check = () => {
+      setCollapsible(el.scrollHeight > LEGEND_COLLAPSED_PX + 1)
+      setLegendHeight(el.scrollHeight)
+    }
     check()
     const ro = new ResizeObserver(check)
     ro.observe(el)
     return () => ro.disconnect()
   }, [models.length])
 
-  const modelsWithWidth = models.map(m => {
+  const classicModels = models.filter(m => !m.isEstimated)
+  const estimatedModels = models.filter(m => m.isEstimated)
+  const classicBudget = classicModels.reduce((acc, m) => acc + m.budget, 0)
+  const classicUsed = classicModels.reduce((acc, m) => acc + (m.used ?? 0), 0)
+  const classicRemaining = Math.max(0, classicBudget - classicUsed)
+  const estimatedBudget = estimatedModels.reduce((acc, m) => acc + m.budget, 0)
+
+  const modelsWithWidth = classicModels.map(m => {
     const usedTokens = m.used ?? 0
     const remainingTokens = Math.max(0, m.budget - usedTokens)
     const fullRemainingTokens = Math.max(0, (m.fullBudget ?? m.budget) - usedTokens)
@@ -39,17 +50,23 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
       usedTokens,
       remainingTokens,
       fullRemainingTokens,
-      widthPct: totalBudget > 0 ? (remainingTokens / totalBudget) * 100 : 0,
+      widthPct: classicBudget > 0 ? (remainingTokens / classicBudget) * 100 : 0,
     }
   })
-  const usedPct = totalBudget > 0 ? Math.min(100, (totalUsed / totalBudget) * 100) : 0
+  const usedPct = classicBudget > 0 ? Math.min(100, (classicUsed / classicBudget) * 100) : 0
 
   return (
     <section className="rounded-3xl border bg-card p-5">
       <div className="flex items-baseline justify-between mb-3">
         <h2 className="text-sm font-medium">{t('models.monthlyTokenBudget')}</h2>
         <span className="text-xs text-muted-foreground tabular-nums">
-          <span className="text-foreground font-medium">{formatTokens(remaining)}</span> {t('models.remaining')}
+          <span className="text-foreground font-medium">{formatTokens(classicRemaining)}</span> {t('models.remaining')}
+          {estimatedBudget > 0 && (
+            <>
+              <span className="mx-1.5">+</span>
+              <span className="text-foreground font-medium">~{formatTokens(estimatedBudget)}</span> {t('models.fromRpm') ?? 'from rpm'}
+            </>
+          )}
           <span className="mx-1.5">·</span>
           {remainingPct} {t('models.of')} {formatTokens(totalBudget)}
           {totalUsed > 0 && (
@@ -72,9 +89,9 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
             }}
           />
         ))}
-        {totalUsed > 0 && (
+        {classicUsed > 0 && (
           <div
-            title={`Used: ${formatTokens(totalUsed)}`}
+            title={`Used: ${formatTokens(classicUsed)}`}
             className="bg-muted-foreground/30"
             style={{ width: `${usedPct}%` }}
           />
@@ -84,7 +101,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
       <div
         ref={legendRef}
         className="mt-4 overflow-hidden transition-[max-height] duration-300 ease-in-out"
-        style={collapsible ? { maxHeight: expanded ? legendRef.current?.scrollHeight : LEGEND_COLLAPSED_PX } : undefined}
+        style={collapsible ? { maxHeight: expanded ? legendHeight : LEGEND_COLLAPSED_PX } : undefined}
       >
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-5 gap-y-1.5 text-xs tabular-nums">
           {modelsWithWidth.map((m, i) => (

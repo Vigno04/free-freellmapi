@@ -354,17 +354,18 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
     .filter(m => platformSet.has(m.platform))
     .map(m => {
       const keys = Math.max(1, keyCountMap.get(m.platform) ?? 1);
-      const budget = computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens).tokens * keys;
+      const est = computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens);
+      const budget = est.tokens * keys;
       
       const stats = platformStats.get(m.platform) ?? { maxBudget: 0, count: 0 };
       stats.maxBudget = Math.max(stats.maxBudget, budget);
       stats.count += 1;
       platformStats.set(m.platform, stats);
       
-      return { m, budget };
+      return { m, budget, isEstimated: est.isEstimated };
     });
 
-  const modelBudgets = rawModelBudgets.map(({ m, budget }) => {
+  const modelBudgets = rawModelBudgets.map(({ m, budget, isEstimated }) => {
     const stats = platformStats.get(m.platform)!;
     // Divide the platform's max budget by its model count to prevent double-counting
     const sharedBudget = stats.count > 0 ? stats.maxBudget / stats.count : budget;
@@ -376,6 +377,7 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
       modelId: m.model_id,
       budget: Math.round(sharedBudget),
       fullBudget: budget,
+      isEstimated,
       used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
       enabled: m.enabled === 1,
       rpmLimit: m.rpm_limit,
