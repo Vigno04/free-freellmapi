@@ -27,7 +27,8 @@ function statusPayload() {
   const db = getDb();
   const modelsCountRow = db.prepare('SELECT COUNT(*) as c FROM models').get() as { c: number };
   const mediaCountRow = db.prepare('SELECT COUNT(*) as c FROM media_models').get() as { c: number };
-  const totalModels = (modelsCountRow?.c || 0) + (mediaCountRow?.c || 0);
+  const embeddingsCountRow = db.prepare('SELECT COUNT(*) as c FROM embedding_models').get() as { c: number };
+  const totalModels = (modelsCountRow?.c || 0) + (mediaCountRow?.c || 0) + (embeddingsCountRow?.c || 0);
   const interval = getSetting(SETTING_CATALOG_SYNC_INTERVAL) || '12h';
   const fallbacksStr = getSetting(SETTING_CATALOG_FALLBACK_SOURCES) || '';
   const fallbackSources = fallbacksStr.split(',').filter(Boolean);

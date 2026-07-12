@@ -482,8 +482,22 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     }
 
     const contextWindow = attrs.context ? parseInt(attrs.context, 10) : null;
-    const isImage = attrs.modality && (attrs.modality.includes('image') || attrs.modality.includes('video'));
-    const modality = isImage ? 'image' : 'text';
+    
+    // Process modalities
+    const modStr = attrs.modality || '';
+    if (modStr.includes('embedding') || modStr.includes('rerank')) {
+      // Embedding models are handled by embedding_models table, not the chat/media catalog
+      continue;
+    }
+    
+    const isImage = modStr.includes('image') || modStr.includes('video');
+    const isAudio = modStr.includes('audio');
+    const modality = isImage ? 'image' : (isAudio ? 'audio' : 'text');
+    const supportsVision = modStr.includes('vision');
+
+    // Extract size label (e.g. "70B", "1.5B") from the name if present, else fallback to "Free"
+    const sizeMatch = attrs.name.match(/(?<![a-zA-Z])(\d+(?:\.\d+)?(?:B|M|T|Trillion|Billion))(?![a-zA-Z])/i);
+    const sizeLabel = sizeMatch ? sizeMatch[1].toUpperCase() : 'Free';
 
     models.push({
       platform,
@@ -491,12 +505,12 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
       displayName: attrs.name,
       intelligenceRank: attrs.score ? parseInt(attrs.score, 10) : 50,
       speedRank: 50,
-      sizeLabel: 'Free',
+      sizeLabel,
       limits: { rpm, rpd, tpm, tpd },
       monthlyTokenBudget: '',
       contextWindow,
       enabled: attrs.free === '1',
-      supportsVision: attrs.modality ? attrs.modality.includes('vision') : false,
+      supportsVision,
       supportsTools: true,
       modality
     });

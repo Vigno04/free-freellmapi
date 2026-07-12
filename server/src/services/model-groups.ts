@@ -109,12 +109,27 @@ export function stripProviderSuffix(displayName: string): string {
   return s;
 }
 
+const ORG_PREFIXES = [
+  'deepseek-ai', 'deepseek', 'meta-llama', 'meta', 'google', 'openai', 'anthropic', 
+  'cohere', 'mistralai', 'mistral', 'qwen', 'nvidia', 'microsoft', 'x-ai', 'xai', 
+  'minimax', 'minimaxai', '01-ai', 'z-ai', 'zhipuai', 'alibaba', 'tencent', 
+  'moonshotai', 'moonshot', 'stepfun', 'liquid', 'poolside', 'cognitivecomputations', 
+  'nousresearch', 'databricks', 'upstage', 'perplexity', 'fireworks', 'together'
+];
+const ORG_REGEX = new RegExp(`^(?:@cf\\/|accounts\\/[^/]+\\/models\\/|(?:${ORG_PREFIXES.join('|')})\\/)`);
+
 // The grouping identity: suffix-stripped, lowercased, with hyphens/underscores/
 // whitespace all treated as one separator — so catalog spelling differences like
 // "Qwen3 Coder" vs "Qwen3-Coder" group together. Meaningful characters such as
 // '+' are kept, so "Command R" and "Command R+" stay distinct.
 export function normalizeGroupKey(displayName: string): string {
-  return stripProviderSuffix(displayName).toLowerCase().replace(/[\s\-_]+/g, ' ').trim();
+  let name = stripProviderSuffix(displayName).toLowerCase();
+  
+  // Strip common org prefixes so "deepseek-ai/deepseek-v4-flash" groups with "deepseek-v4-flash"
+  name = name.replace(/^@cf\//, ''); // Cloudflare prefix
+  name = name.replace(ORG_REGEX, '');
+
+  return name.replace(/[\s\-_]+/g, ' ').trim();
 }
 
 // A stable, human-friendly slug for the API. Keeps digits and dots ("3.3").

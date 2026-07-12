@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { apiFetch } from '@/lib/api'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -9,7 +9,7 @@ import { FieldError } from '@/components/ui/field-error'
 import type { Platform } from '../../../../shared/types'
 import { useI18n } from '@/i18n'
 import { toast } from '@/lib/toast'
-import { GetKeyLink, PLATFORMS } from './shared'
+import { GetKeyLink, PLATFORMS, type HealthData } from './shared'
 
 // The "Provider key" pane of the Add key dialog: paste a credential for a known
 // provider. Extracted verbatim from the old inline KeysPage form so all field
@@ -23,6 +23,11 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
   const [accountId, setAccountId] = useState('')
   const [label, setLabel] = useState('')
   const [addAttempted, setAddAttempted] = useState(false)
+
+  const { data: healthData } = useQuery<HealthData>({
+    queryKey: ['health'],
+    queryFn: () => apiFetch('/api/health'),
+  })
 
   const addKey = useMutation({
     meta: { silenceToast: true },
@@ -68,13 +73,21 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
         <div className="space-y-1.5">
           <Label className="text-xs">{t('keys.platform')}</Label>
           <Select value={platform} onValueChange={(v) => setPlatform(v as Platform)}>
-            <SelectTrigger className="w-[220px]" aria-invalid={addAttempted && !!platformError}>
+            <SelectTrigger className="w-[280px]" aria-invalid={addAttempted && !!platformError}>
               <SelectValue placeholder={t('keys.selectPlatform')} />
             </SelectTrigger>
             <SelectContent>
-              {PLATFORMS.map(p => (
-                <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
-              ))}
+              {PLATFORMS.map(p => {
+                const count = healthData?.platforms.find(x => x.platform === p.value)?.totalKeys || 0
+                return (
+                  <SelectItem key={p.value} value={p.value}>
+                    <div className="flex flex-1 items-center justify-between w-full">
+                      <span>{p.label}</span>
+                      {count > 0 && <span className="text-muted-foreground text-xs ml-auto">{count}</span>}
+                    </div>
+                  </SelectItem>
+                )
+              })}
             </SelectContent>
           </Select>
           {addAttempted && <FieldError error={platformError} />}

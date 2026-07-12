@@ -69,6 +69,8 @@ export default function CatalogPage() {
     queryClient.invalidateQueries({ queryKey: ['catalogs'] })
     // A sync may have changed the model list and quirks.
     queryClient.invalidateQueries({ queryKey: ['models'] })
+    // It also changes the monthly token budget of models, which affects fallback token usage.
+    queryClient.invalidateQueries({ queryKey: ['fallback'] })
   }
 
   const activate = useMutation({

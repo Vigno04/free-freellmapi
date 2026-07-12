@@ -99,7 +99,13 @@ analyticsRouter.get('/summary', (req: Request, res: Response) => {
       ELSE 0 END
     ), 0) as est_savings
     FROM requests r
-    LEFT JOIN models m ON m.platform = r.platform AND m.model_id = r.model_id
+    LEFT JOIN (
+      SELECT platform, model_id, paid_input_per_m, paid_output_per_m FROM models
+      UNION ALL
+      SELECT platform, model_id, NULL as paid_input_per_m, NULL as paid_output_per_m FROM media_models
+      UNION ALL
+      SELECT platform, model_id, NULL as paid_input_per_m, NULL as paid_output_per_m FROM embedding_models
+    ) m ON m.platform = r.platform AND m.model_id = r.model_id
     WHERE r.created_at >= ?
   `).get(FALLBACK_INPUT_PER_M, FALLBACK_OUTPUT_PER_M, since) as { est_savings: number };
 
@@ -211,7 +217,13 @@ analyticsRouter.get('/by-model', (req: Request, res: Response) => {
         r.output_tokens * COALESCE(m.paid_output_per_m, ?) / 1000000.0
       ELSE 0 END) as est_cost
     FROM requests r
-    LEFT JOIN models m ON m.platform = r.platform AND m.model_id = r.model_id
+    LEFT JOIN (
+      SELECT platform, model_id, display_name, paid_input_per_m, paid_output_per_m FROM models
+      UNION ALL
+      SELECT platform, model_id, display_name, NULL as paid_input_per_m, NULL as paid_output_per_m FROM media_models
+      UNION ALL
+      SELECT platform, model_id, display_name, NULL as paid_input_per_m, NULL as paid_output_per_m FROM embedding_models
+    ) m ON m.platform = r.platform AND m.model_id = r.model_id
     WHERE r.created_at >= ?
     GROUP BY r.platform, r.model_id
     ORDER BY requests DESC
