@@ -54,6 +54,7 @@ function computeEstimatedBudget(baseBudget: number, rpdLimit: number | null, rpm
 // ── Bandit routing strategy ─────────────────────────────────────────────────
 // GET  /routing → active strategy, preset weights, and the per-model score
 //                 breakdown (reliability / speed / intelligence + guardrails).
+// fallbackRouter.use(requireAuth);
 fallbackRouter.get('/routing', (_req: Request, res: Response) => {
   res.json(getRoutingScores());
 });
@@ -379,7 +380,7 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
       platform: m.platform,
       modelId: m.model_id,
       budget: Math.round(sharedBudget),
-      fullBudget: budget,
+      fullBudget: stats.maxBudget,
       creditBudget,
       isEstimated,
       used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,

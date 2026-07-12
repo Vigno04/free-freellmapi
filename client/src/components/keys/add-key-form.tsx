@@ -118,7 +118,7 @@ export function AddKeyForm({ onSuccess }: { onSuccess: () => void }) {
             <Input
               value={baseUrl}
               onChange={e => setBaseUrl(e.target.value)}
-              placeholder="https://ws-z6rshi7kluku0x75.cn-beijing.maas.aliyuncs.com/compatible-mode/v1"
+              placeholder="https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
               className="font-mono text-xs"
               aria-invalid={addAttempted && !!baseUrlError}
             />

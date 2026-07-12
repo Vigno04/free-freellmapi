@@ -116,7 +116,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
               <span className="font-mono text-muted-foreground">{formatTokens(m.fullRemainingTokens)}</span>
             </div>
           ))}
-          {creditModels.map((m, i) => (
+          {[...estimatedModels, ...creditModels].map((m, i) => (
             <div key={`cr-${i}`} className="flex items-center gap-2 min-w-0">
               <span
                 className="size-2 rounded-sm flex-shrink-0"
@@ -124,7 +124,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
               />
               <span className="truncate">{m.displayName}</span>
               <span className="flex-1" />
-              <span className="font-mono text-muted-foreground">{m.creditBudget}</span>
+              <span className="font-mono text-muted-foreground">{m.creditBudget || ((m.fullBudget ?? 0) > 0 ? `~${formatTokens(m.fullBudget ?? 0)}` : 'No limits')}</span>
             </div>
           ))}
         </div>

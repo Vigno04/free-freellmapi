@@ -232,8 +232,12 @@ export default function FallbackPage() {
         <GettingStarted />
 
         {/* Monthly token budget — moved to the top */}
-        {tokenUsage && (tokenUsage.totalBudget > 0 || tokenUsage.models.some(m => m.creditBudget)) && <TokenUsageBar data={tokenUsage} />}
-
+        {tokenUsage && tokenUsage.models.length > 0 && (
+          <div className="mb-6 bg-card rounded-lg border border-border p-6 shadow-sm overflow-hidden">
+            <TokenUsageBar data={tokenUsage} />
+          </div>
+        )}
+        
         {/* Strategy selector */}
         <section className="rounded-3xl border bg-card p-5">
           <div className="flex items-baseline justify-between mb-3">

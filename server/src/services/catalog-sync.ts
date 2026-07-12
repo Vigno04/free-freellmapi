@@ -585,7 +585,7 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
         };
 
         const providerModels: string[] = [];
-        const modelRegex = /href="\/models\/[^/]+\/([^"]+)"/g;
+        const modelRegex = /href="\/models\/[^/"]+\/([^/"]+)"/g;
         let mMatch;
         while ((mMatch = modelRegex.exec(html)) !== null) {
           if (!providerModels.includes(mMatch[1])) {
