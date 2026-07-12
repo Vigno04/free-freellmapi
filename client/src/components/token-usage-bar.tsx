@@ -33,10 +33,12 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
   const modelsWithWidth = models.map(m => {
     const usedTokens = m.used ?? 0
     const remainingTokens = Math.max(0, m.budget - usedTokens)
+    const fullRemainingTokens = Math.max(0, (m.fullBudget ?? m.budget) - usedTokens)
     return {
       ...m,
       usedTokens,
       remainingTokens,
+      fullRemainingTokens,
       widthPct: totalBudget > 0 ? (remainingTokens / totalBudget) * 100 : 0,
     }
   })
@@ -63,7 +65,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
         {modelsWithWidth.map((m, i) => (
           <div
             key={i}
-            title={`${m.displayName} (${m.platform}): ${formatTokens(m.remainingTokens)} ${t('models.remaining')}, ${formatTokens(m.usedTokens)} ${t('models.used')}`}
+            title={`${m.displayName} (${m.platform}): ${formatTokens(m.fullRemainingTokens)} ${t('models.remaining')}, ${formatTokens(m.usedTokens)} ${t('models.used')}`}
             style={{
               width: `${m.widthPct}%`,
               backgroundColor: platformColors[m.platform] ?? '#94a3b8',
@@ -93,7 +95,7 @@ export function TokenUsageBar({ data }: { data: TokenUsageData }) {
               />
               <span className="truncate">{m.displayName}</span>
               <span className="flex-1" />
-              <span className="font-mono text-muted-foreground">{formatTokens(m.remainingTokens)}</span>
+              <span className="font-mono text-muted-foreground">{formatTokens(m.fullRemainingTokens)}</span>
             </div>
           ))}
         </div>

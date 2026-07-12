@@ -69,7 +69,7 @@ export type Row = FallbackEntry & Partial<RoutingScore>
 export interface TokenUsageData {
   totalBudget: number
   totalUsed: number
-  models: { displayName: string; platform: string; modelId?: string; budget: number; used?: number }[]
+  models: { displayName: string; platform: string; modelId?: string; budget: number; fullBudget?: number; used?: number }[]
 }
 
 // Custom endpoints all share the generic 'custom' platform id, so show the

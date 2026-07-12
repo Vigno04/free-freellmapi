@@ -348,26 +348,44 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
 
   const medianTokens = getMedianTokensPerRequest(db);
 
-  const modelBudgets = rawModels
+  const platformStats = new Map<string, { maxBudget: number; count: number }>();
+  
+  const rawModelBudgets = rawModels
     .filter(m => platformSet.has(m.platform))
     .map(m => {
       const keys = Math.max(1, keyCountMap.get(m.platform) ?? 1);
-      return {
-        modelDbId: m.model_db_id,
-        displayName: m.display_name,
-        platform: m.platform,
-        modelId: m.model_id,
-        budget: computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens).tokens * keys,
-        used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
-        enabled: m.enabled === 1,
-        rpmLimit: m.rpm_limit,
-        rpdLimit: m.rpd_limit,
-        tpmLimit: m.tpm_limit,
-        tpdLimit: m.tpd_limit,
-      };
+      const budget = computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens).tokens * keys;
+      
+      const stats = platformStats.get(m.platform) ?? { maxBudget: 0, count: 0 };
+      stats.maxBudget = Math.max(stats.maxBudget, budget);
+      stats.count += 1;
+      platformStats.set(m.platform, stats);
+      
+      return { m, budget };
     });
 
-  // Total budget counts all models (both enabled and disabled — they contribute to the pool)
+  const modelBudgets = rawModelBudgets.map(({ m, budget }) => {
+    const stats = platformStats.get(m.platform)!;
+    // Divide the platform's max budget by its model count to prevent double-counting
+    const sharedBudget = stats.count > 0 ? stats.maxBudget / stats.count : budget;
+    
+    return {
+      modelDbId: m.model_db_id,
+      displayName: m.display_name,
+      platform: m.platform,
+      modelId: m.model_id,
+      budget: Math.round(sharedBudget),
+      fullBudget: budget,
+      used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
+      enabled: m.enabled === 1,
+      rpmLimit: m.rpm_limit,
+      rpdLimit: m.rpd_limit,
+      tpmLimit: m.tpm_limit,
+      tpdLimit: m.tpd_limit,
+    };
+  });
+
+  // Total budget counts all models (which now sum up to exactly each platform's max budget)
   const totalBudget = modelBudgets.reduce((s, m) => s + m.budget, 0);
   const totalUsed = modelBudgets.reduce((s, m) => s + m.used, 0);
 
