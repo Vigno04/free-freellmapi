@@ -12,6 +12,7 @@ import { BANDIT_PRESETS, type RoutingStrategy } from '../services/scoring.js';
 import { parseBudget } from '../lib/budget.js';
 import { getModelGroups } from '../services/model-groups.js';
 import { getPenaltyInspector } from '../services/penalty-inspector.js';
+import { getProvider } from '../providers/index.js';
 
 export const fallbackRouter = Router();
 
@@ -42,8 +43,10 @@ function formatTokenBudget(tokens: number): string {
   return `~${tokens}`;
 }
 
-function computeEstimatedBudget(baseBudget: number, rpdLimit: number | null, rpmLimit: number | null, medianTokens: number): { tokens: number; isEstimated: boolean } {
+function computeEstimatedBudget(baseBudget: number, tpdLimit: number | null, tpmLimit: number | null, rpdLimit: number | null, rpmLimit: number | null, medianTokens: number): { tokens: number; isEstimated: boolean } {
   if (baseBudget > 0) return { tokens: baseBudget, isEstimated: false };
+  if (tpdLimit) return { tokens: Math.round(tpdLimit * 30), isEstimated: true };
+  if (tpmLimit) return { tokens: Math.round(tpmLimit * 60 * 16 * 30), isEstimated: true };
   // RPD-limited: daily requests * 30 days * median tokens per request.
   if (rpdLimit) return { tokens: Math.round(rpdLimit * 30 * medianTokens), isEstimated: true };
   // RPM-limited only: assume 16 active hours/day (realistic) * 30 days.
@@ -146,7 +149,7 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
     const penalty = penaltyMap.get(r.model_db_id);
     const group = groupByDbId.get(r.model_db_id);
     const baseBudget = parseBudget(r.monthly_token_budget);
-    const { tokens: estimatedTokens, isEstimated } = computeEstimatedBudget(baseBudget, r.rpd_limit, r.rpm_limit, medianTokens);
+    const { tokens: estimatedTokens, isEstimated } = computeEstimatedBudget(baseBudget, r.tpd_limit, r.tpm_limit, r.rpd_limit, r.rpm_limit, medianTokens);
     const displayBudget = isEstimated ? formatTokenBudget(estimatedTokens) : r.monthly_token_budget;
 
     return {
@@ -331,7 +334,7 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
     .filter(m => platformSet.has(m.platform))
     .map(m => {
       const keys = Math.max(1, keyCountMap.get(m.platform) ?? 1);
-      const est = computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.rpd_limit, m.rpm_limit, medianTokens);
+      const est = computeEstimatedBudget(parseBudget(m.monthly_token_budget), m.tpd_limit, m.tpm_limit, m.rpd_limit, m.rpm_limit, medianTokens);
       const budget = est.tokens * keys;
       
       const stats = platformStats.get(m.platform) ?? { maxBudget: 0, count: 0 };
@@ -344,16 +347,20 @@ fallbackRouter.get('/token-usage', (_req: Request, res: Response) => {
 
   const modelBudgets = rawModelBudgets.map(({ m, budget, isEstimated }) => {
     const stats = platformStats.get(m.platform)!;
-    // Divide the platform's max budget by its model count to prevent double-counting
-    const sharedBudget = stats.count > 0 ? stats.maxBudget / stats.count : budget;
-    
+    const provider = getProvider(m.platform);
+    const hasSharedQuota = provider?.sharedQuota ?? false;
+
+    // Divide the platform's max budget by its model count to prevent double-counting ONLY if it's a shared quota
+    const finalBudget = hasSharedQuota && stats.count > 0 ? stats.maxBudget / stats.count : budget;
+    const finalFullBudget = hasSharedQuota ? stats.maxBudget : budget;
+
     return {
       modelDbId: m.model_db_id,
       displayName: m.display_name,
       platform: m.platform,
       modelId: m.model_id,
-      budget: Math.round(sharedBudget),
-      fullBudget: stats.maxBudget,
+      budget: Math.round(finalBudget),
+      fullBudget: finalFullBudget,
       isEstimated,
       used: usageByModel.get(`${m.platform}:${m.model_id}`) ?? 0,
       enabled: m.enabled === 1,

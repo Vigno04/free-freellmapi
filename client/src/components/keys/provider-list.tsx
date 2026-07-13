@@ -73,6 +73,25 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
   const bypassPlatforms = proxyData?.bypassPlatforms ?? []
   const proxyEnabled = proxyData?.enabled ?? true
 
+  const { data: openRouterSettings } = useQuery<{ highTier: boolean }>({
+    queryKey: ['openrouter-settings'],
+    queryFn: () => apiFetch('/api/settings/openrouter'),
+  })
+
+  const updateOpenRouterTier = useMutation({
+    mutationFn: (highTier: boolean) =>
+      apiFetch('/api/settings/openrouter', {
+        method: 'PUT',
+        body: JSON.stringify({ highTier }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['openrouter-settings'] })
+      queryClient.invalidateQueries({ queryKey: ['fallback'] })
+      queryClient.invalidateQueries({ queryKey: ['token-usage'] })
+      queryClient.invalidateQueries({ queryKey: ['models'] })
+    },
+  })
+
   const deleteKey = useMutation({
     mutationFn: (id: number) => apiFetch(`/api/keys/${id}`, { method: 'DELETE' }),
     onSuccess: () => {
@@ -495,6 +514,19 @@ export function ProviderList({ onAddKey }: { onAddKey: () => void }) {
                         </div>
                       )
                     })}
+                    {group.value === 'openrouter' && (
+                      <div className="flex items-center justify-between px-4 py-3 bg-muted/10 border-t">
+                        <div className="flex flex-col gap-1 text-sm">
+                          <span className="font-medium">OpenRouter High Tier (&gt;$10)</span>
+                          <span className="text-xs text-muted-foreground">Sets RPD limit to 1000 instead of 50. Applies on next catalog sync.</span>
+                        </div>
+                        <Switch
+                          checked={openRouterSettings?.highTier ?? false}
+                          onCheckedChange={(checked) => updateOpenRouterTier.mutate(checked)}
+                          disabled={updateOpenRouterTier.isPending}
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -32,6 +32,7 @@ function sanitizeCohereTools(tools?: ChatToolDefinition[]): ChatToolDefinition[]
 export class CohereProvider extends BaseProvider {
   readonly platform = 'cohere' as const;
   readonly name = 'Cohere';
+  sharedQuota = true;
 
   async chatCompletion(
     apiKey: string,

@@ -66,6 +66,12 @@ export abstract class BaseProvider {
    * the platform "configured", and the provider omits the Authorization header
    * on outgoing requests. Defaults to false; set by subclasses. */
   keyless = false;
+  /** 
+   * If true, the provider enforces rate limits or quotas globally across the 
+   * account/key (e.g. Cloudflare Neurons, OpenRouter credits), so budgets 
+   * should be shared among its models rather than summed. 
+   */
+  sharedQuota = false;
 
   abstract chatCompletion(
     apiKey: string,

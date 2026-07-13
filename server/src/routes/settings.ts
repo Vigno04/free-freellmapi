@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import type { Request, Response } from 'express';
-import { getUnifiedApiKey, regenerateUnifiedKey, getSetting, setSetting } from '../db/index.js';
+import { getDb, getUnifiedApiKey, regenerateUnifiedKey, getSetting, setSetting } from '../db/index.js';
 import { applyProxyUrl, applyProxyEnabled, applyProxyBypass, isProxyActive, getProxyUrl, isProxyEnabled, getProxyBypassPlatforms } from '../lib/proxy.js';
 import { getSavedFusionConfig, setSavedFusionConfig, savedFusionConfigSchema, getFusionMaxK } from '../services/fusion.js';
 import { isUnifyEnabled, setUnifyEnabled, getUnifyOverrides, setUnifyOverrides, unifyOverridesSchema } from '../services/model-groups.js';
@@ -14,6 +14,19 @@ import {
 import { z } from 'zod';
 
 export const settingsRouter = Router();
+
+settingsRouter.get('/openrouter', (_req: Request, res: Response) => {
+  const isHighTier = getSetting('openrouter_high_tier') === 'true';
+  res.json({ highTier: isHighTier });
+});
+
+settingsRouter.put('/openrouter', (req: Request, res: Response) => {
+  const highTier = Boolean(req.body.highTier);
+  setSetting('openrouter_high_tier', highTier ? 'true' : 'false');
+  const db = getDb();
+  db.prepare("UPDATE models SET rpd_limit = ?, rpm_limit = ? WHERE platform = 'openrouter'").run(highTier ? 1000 : 50, 20);
+  res.json({ highTier });
+});
 
 // Get the model-unification setting: the global toggle (default ON) plus any
 // merge/split overrides. Governs the dashboard grouping, /v1/models grouping,

@@ -573,12 +573,29 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
         const rpdMatch = text.match(/(\d+(?:,\d+)?)\s*(?:RPD|req\/day|requests? per day)/i);
         const tpmMatch = text.match(/(\d+(?:,\d+)?)\s*TPM/i);
         const tpdMatch = text.match(/(\d+(?:,\d+)?)\s*TPD/i);
+        const neuronsMatch = text.match(/(\d+(?:,\d+)?)\s*Neurons\/day/i);
         
+        let tpd = tpdMatch ? parseInt(tpdMatch[1].replace(/,/g, ''), 10) : null;
+        if (neuronsMatch) {
+          // Cloudflare: 10,000 Neurons is ~300 requests. If each request is ~1k tokens, 10,000 neurons = 300,000 tokens.
+          // Map Neurons * 30 to TPD.
+          tpd = parseInt(neuronsMatch[1].replace(/,/g, ''), 10) * 30;
+        }
+
+        let rpm = rpmMatch ? parseInt(rpmMatch[1].replace(/,/g, ''), 10) : null;
+        let rpd = rpdMatch ? parseInt(rpdMatch[1].replace(/,/g, ''), 10) : null;
+
+        if (slug === 'openrouter') {
+          const highTier = getSetting('openrouter_high_tier') === 'true';
+          rpd = highTier ? 1000 : 50;
+          rpm = 20;
+        }
+
         defaultLimitsBySlug[slug] = {
-          rpm: rpmMatch ? parseInt(rpmMatch[1].replace(/,/g, ''), 10) : null,
-          rpd: rpdMatch ? parseInt(rpdMatch[1].replace(/,/g, ''), 10) : null,
+          rpm,
+          rpd,
           tpm: tpmMatch ? parseInt(tpmMatch[1].replace(/,/g, ''), 10) : null,
-          tpd: tpdMatch ? parseInt(tpdMatch[1].replace(/,/g, ''), 10) : null,
+          tpd: tpd,
         };
 
         const providerModels: string[] = [];

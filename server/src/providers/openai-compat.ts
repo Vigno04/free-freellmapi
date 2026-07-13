@@ -39,6 +39,7 @@ export class OpenAICompatProvider extends BaseProvider {
     timeoutMs?: number;
     keyless?: boolean;
     forceSingleToolCall?: boolean;
+    sharedQuota?: boolean;
   }) {
     super();
     this.platform = opts.platform;
@@ -49,6 +50,7 @@ export class OpenAICompatProvider extends BaseProvider {
     this.timeoutMs = opts.timeoutMs ?? 15000;
     this.keyless = opts.keyless ?? false;
     this.forceSingleToolCall = opts.forceSingleToolCall ?? false;
+    this.sharedQuota = opts.sharedQuota ?? false;
   }
 
   /** Resolve the parallel_tool_calls flag to send upstream. For providers that

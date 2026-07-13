@@ -22,6 +22,7 @@ const CHAT_TIMEOUT_MS = 60_000;
 export class CloudflareProvider extends BaseProvider {
   readonly platform = 'cloudflare' as const;
   readonly name = 'Cloudflare Workers AI';
+  sharedQuota = true;
 
   private parseKey(apiKey: string): { accountId: string; token: string } {
     const sep = apiKey.indexOf(':');
