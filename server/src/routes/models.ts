@@ -8,6 +8,7 @@ import {
   isCatalogManagedModel,
   recordCatalogModelTombstone,
   upsertModelOverrides,
+  parseOverrides,
   type ModelOverridePatch,
 } from '../services/model-state.js';
 
@@ -183,6 +184,7 @@ modelsRouter.get('/', (_req: Request, res: Response) => {
   const db = getDb();
   const models = db.prepare(`
     SELECT m.*, fc.priority, fc.enabled as fallback_enabled,
+           mo.overrides_json,
            mo.overrides_json IS NOT NULL AS has_overrides,
            ak.label AS key_label
     FROM models m
@@ -202,32 +204,38 @@ modelsRouter.get('/', (_req: Request, res: Response) => {
 
   const keyCountMap = new Map(keyCounts.map(k => [k.platform, k.count]));
 
-  const result = models.map(m => ({
-    id: m.id,
-    platform: m.platform,
-    modelId: m.model_id,
-    displayName: m.display_name,
-    intelligenceRank: m.intelligence_rank,
-    speedRank: m.speed_rank,
-    sizeLabel: m.size_label,
-    rpmLimit: m.rpm_limit,
-    rpdLimit: m.rpd_limit,
-    tpmLimit: m.tpm_limit,
-    tpdLimit: m.tpd_limit,
-    monthlyTokenBudget: m.monthly_token_budget,
-    contextWindow: m.context_window,
-    enabled: m.enabled === 1,
-    supportsVision: m.supports_vision === 1,
-    supportsTools: m.supports_tools === 1,
-    priority: m.priority,
-    fallbackEnabled: m.fallback_enabled === 1,
-    source: m.platform === 'custom' || m.key_id != null ? 'custom' : 'catalog',
-    keyId: m.key_id ?? null,
-    keyLabel: m.key_label ?? null,
-    hasOverrides: Boolean(m.has_overrides),
-    hasProvider: hasProvider(m.platform),
-    keyCount: keyCountMap.get(m.platform) ?? 0,
-  }));
+  const result = models.map(m => {
+    const overrides = parseOverrides(m.overrides_json);
+    return {
+      id: m.id,
+      platform: m.platform,
+      modelId: m.model_id,
+      displayName: m.display_name,
+      intelligenceRank: m.intelligence_rank,
+      speedRank: m.speed_rank,
+      sizeLabel: m.size_label,
+      rpmLimit: m.rpm_limit,
+      rpdLimit: m.rpd_limit,
+      tpmLimit: m.tpm_limit,
+      tpdLimit: m.tpd_limit,
+      monthlyTokenBudget: m.monthly_token_budget,
+      contextWindow: m.context_window,
+      enabled: m.enabled === 1,
+      supportsVision: m.supports_vision === 1,
+      supportsTools: m.supports_tools === 1,
+      priority: m.priority,
+      fallbackEnabled: m.fallback_enabled === 1,
+      source: m.platform === 'custom' || m.key_id != null ? 'custom' : 'catalog',
+      keyId: m.key_id ?? null,
+      keyLabel: m.key_label ?? null,
+      hasOverrides: Boolean(m.has_overrides),
+      hasProvider: hasProvider(m.platform),
+      keyCount: keyCountMap.get(m.platform) ?? 0,
+      aaPricing: overrides.aaPricing,
+      aaBenchmarks: overrides.aaBenchmarks,
+      releaseDate: overrides.releaseDate,
+    };
+  });
 
   res.json(result);
 });

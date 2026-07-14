@@ -15,6 +15,9 @@ export interface FallbackEntry {
   intelligenceRank: number
   speedRank: number
   sizeLabel: string
+  creator?: string
+  codingScore?: number
+  agenticScore?: number
   rpmLimit: number | null
   rpdLimit: number | null
   monthlyTokenBudget: string
@@ -39,6 +42,11 @@ export interface FallbackEntry {
   groupKey?: string
   canonicalId?: string
   groupLabel?: string
+  releaseDate?: string
+  aaPricing?: { price_1m_input_tokens?: number; price_1m_output_tokens?: number; price_1m_blended_3_to_1?: number }
+  aaBenchmarks?: Record<string, number | null>
+  aaSlug?: string | null
+  aaIntelligenceScore?: number | null
 }
 
 export type RoutingStrategy = 'priority' | 'balanced' | 'smartest' | 'fastest' | 'reliable' | 'custom'

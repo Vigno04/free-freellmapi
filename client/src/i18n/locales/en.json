@@ -13,7 +13,8 @@
     "switchToChinese": "Switch to Chinese",
     "switchToEnglish": "Switch to English",
     "modelsMenu": "Browse model types",
-    "catalog": "Catalogue"
+    "catalog": "Catalogue",
+    "settings": "Settings"
   },
   "auth": {
     "createYourAccount": "Create your account",
@@ -141,7 +142,13 @@
     "showingCount": "{shown} of {total} models",
     "clearFilters": "Clear filters",
     "noMatches": "No models match your filters.",
-    "noModelsTitle": "No models configured"
+    "noModelsTitle": "No models configured",
+    "details": "Details",
+    "releaseDate": "Release date",
+    "benchmarks": "Benchmarks",
+    "priceInput": "Input price",
+    "priceOutput": "Output price",
+    "priceBlended": "Blended price"
   },
   "strategies": {
     "title": "Routing strategy",

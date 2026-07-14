@@ -48,12 +48,16 @@ export interface GroupableRow {
   model_id: string;
   display_name: string;
   intelligence_rank?: number;
+  base_model_id?: number | null;
+  base_model_canonical_id?: string | null;
+  base_model_group_label?: string | null;
 }
 
 export interface ModelGroup {
-  groupKey: string;        // normalized display name — the grouping identity
+  groupKey: string;        // base_models.canonical_id or normalized display name
   canonicalId: string;     // stable slug advertised on /v1/models
-  groupLabel: string;      // human label = representative member's stripped name
+  groupLabel: string;      // base_models.group_label or representative member's stripped name
+  baseModelId?: number;    // ID of the base_model (if applicable)
   members: GroupableRow[]; // all rows in the group (any enabled state)
 }
 
@@ -157,7 +161,7 @@ function tokenForRow(row: GroupableRow, ov: UnifyOverrides): string {
   const split = ov.splits.find(s => s.member === mid);
   if (split) return split.groupKey ? normalizeGroupKey(split.groupKey) : `__split__:${mid}`;
 
-  const base = normalizeGroupKey(row.display_name);
+  const base = row.base_model_canonical_id || normalizeGroupKey(row.display_name);
   const merge = ov.merges.find(mg => mg.keys.some(k => k === mid || normalizeGroupKey(k) === base));
   return merge ? normalizeGroupKey(merge.into) : base;
 }
@@ -186,7 +190,13 @@ export function groupRows(rows: GroupableRow[], ov: UnifyOverrides): ModelGroup[
     const key = tokenForRow(row, ov);
     let g = map.get(key);
     if (!g) {
-      g = { groupKey: key, canonicalId: '', groupLabel: stripProviderSuffix(row.display_name), members: [] };
+      g = { 
+        groupKey: key, 
+        canonicalId: '', 
+        groupLabel: row.base_model_group_label || stripProviderSuffix(row.display_name), 
+        baseModelId: row.base_model_id || undefined,
+        members: [] 
+      };
       map.set(key, g);
     }
     g.members.push(row);
@@ -195,11 +205,13 @@ export function groupRows(rows: GroupableRow[], ov: UnifyOverrides): ModelGroup[
   // Representative label = the best (lowest intelligence_rank) member, tiebroken
   // by shortest stripped name then model_db_id, so the label is deterministic.
   for (const g of map.values()) {
-    const rep = [...g.members].sort((a, b) =>
-      (a.intelligence_rank ?? Number.MAX_SAFE_INTEGER) - (b.intelligence_rank ?? Number.MAX_SAFE_INTEGER)
-      || stripProviderSuffix(a.display_name).length - stripProviderSuffix(b.display_name).length
-      || a.model_db_id - b.model_db_id)[0];
-    g.groupLabel = stripProviderSuffix(rep.display_name);
+    if (!g.groupLabel || !g.baseModelId) {
+      const rep = [...g.members].sort((a, b) =>
+        (a.intelligence_rank ?? Number.MAX_SAFE_INTEGER) - (b.intelligence_rank ?? Number.MAX_SAFE_INTEGER)
+        || stripProviderSuffix(a.display_name).length - stripProviderSuffix(b.display_name).length
+        || a.model_db_id - b.model_db_id)[0];
+      g.groupLabel = rep.base_model_group_label || stripProviderSuffix(rep.display_name);
+    }
   }
 
   const groups = [...map.values()];
@@ -235,8 +247,11 @@ export function resolveRequestedIdToMembers(requested: string, groups: ModelGrou
 export function getModelGroups(): ModelGroup[] {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT m.id as model_db_id, m.platform, m.model_id, m.display_name, m.intelligence_rank
+    SELECT 
+      m.id as model_db_id, m.platform, m.model_id, m.display_name, m.intelligence_rank,
+      b.id as base_model_id, b.canonical_id as base_model_canonical_id, b.group_label as base_model_group_label
     FROM models m
+    LEFT JOIN base_models b ON m.base_model_id = b.id
   `).all() as GroupableRow[];
   return groupRows(rows, getUnifyOverrides());
 }

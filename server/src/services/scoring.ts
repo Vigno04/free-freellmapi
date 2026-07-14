@@ -106,13 +106,6 @@ export function speedScore(tokPerSec: number, ttfbMs: number | null): number {
   return THROUGHPUT_WEIGHT * tp + TTFB_WEIGHT * ttfbScore(ttfbMs);
 }
 
-// ── Intelligence ────────────────────────────────────────────────────────────
-// Caller supplies a composite (tier-first, rank-as-tiebreaker — see router) and
-// the min/max across the enabled chain. We min-max normalize to [0,1], 1 = best.
-export function intelligenceScore(composite: number, min: number, max: number): number {
-  if (max <= min) return 1; // single model or all equal → neutral-high
-  return (composite - min) / (max - min);
-}
 
 // ── Guardrail: free-quota headroom ──────────────────────────────────────────
 // Multiplier that stays at 1 while a model has comfortable monthly headroom and

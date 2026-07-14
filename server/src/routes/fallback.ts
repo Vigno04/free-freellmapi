@@ -9,6 +9,7 @@ import { z } from 'zod';
 import { getDb } from '../db/index.js';
 import { getAllPenalties, getRoutingScores, getRoutingStrategy, setRoutingStrategy, setCustomWeights } from '../services/router.js';
 import { BANDIT_PRESETS, type RoutingStrategy } from '../services/scoring.js';
+import { parseOverrides } from '../services/model-state.js';
 import { parseBudget } from '../lib/budget.js';
 import { getModelGroups } from '../services/model-groups.js';
 import { getPenaltyInspector } from '../services/penalty-inspector.js';
@@ -105,14 +106,18 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
   const db = getDb();
   const rows = db.prepare(`
     SELECT fc.model_db_id, fc.priority, fc.enabled,
-           m.platform, m.model_id, m.display_name, m.intelligence_rank,
+           m.platform, m.model_id, m.display_name, 
+           COALESCE(bm.intelligence_score, m.intelligence_rank) AS intelligence_rank,
            m.speed_rank, m.size_label, m.rpm_limit, m.rpd_limit,
            m.tpm_limit, m.tpd_limit, m.context_window,
            m.monthly_token_budget, m.supports_vision, m.supports_tools,
+           bm.creator, bm.coding_score, bm.agentic_score, bm.aa_slug, bm.intelligence_score AS aa_intelligence_score,
            m.key_id, ak.label AS key_label,
+           mo.overrides_json,
            mo.overrides_json IS NOT NULL AS has_overrides
     FROM fallback_config fc
     JOIN models m ON m.id = fc.model_db_id
+    LEFT JOIN base_models bm ON m.base_model_id = bm.id
     LEFT JOIN api_keys ak ON ak.id = m.key_id
     LEFT JOIN model_overrides mo ON mo.platform = m.platform AND mo.model_id = m.model_id
     WHERE m.enabled = 1
@@ -151,6 +156,7 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
     const baseBudget = parseBudget(r.monthly_token_budget);
     const { tokens: estimatedTokens, isEstimated } = computeEstimatedBudget(baseBudget, r.tpd_limit, r.tpm_limit, r.rpd_limit, r.rpm_limit, medianTokens);
     const displayBudget = isEstimated ? formatTokenBudget(estimatedTokens) : r.monthly_token_budget;
+    const overrides = parseOverrides(r.overrides_json);
 
     return {
       modelDbId: r.model_db_id,
@@ -168,6 +174,9 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
       intelligenceRank: r.intelligence_rank,
       speedRank: r.speed_rank,
       sizeLabel: r.size_label,
+      creator: r.creator,
+      codingScore: r.coding_score,
+      agenticScore: r.agentic_score,
       rpmLimit: r.rpm_limit,
       rpdLimit: r.rpd_limit,
       tpmLimit: r.tpm_limit,
@@ -188,6 +197,11 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
       keyLabel: r.key_label ?? null,
       hasOverrides: Boolean(r.has_overrides),
       keyCount: keyCountMap.get(r.platform) ?? 0,
+      aaSlug: r.aa_slug ?? null,
+      aaIntelligenceScore: r.aa_intelligence_score ?? null,
+      aaPricing: overrides.aaPricing,
+      aaBenchmarks: overrides.aaBenchmarks,
+      releaseDate: overrides.releaseDate,
     };
   }));
 });

@@ -157,6 +157,57 @@ export default function ModelDetailPage() {
               </table>
             </div>
 
+            {/* Extended Info */}
+            {(members[0]?.releaseDate || members[0]?.aaPricing || members[0]?.aaBenchmarks) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {(members[0]?.releaseDate || members[0]?.aaPricing) && (
+                  <div className="rounded-2xl border bg-card p-4">
+                    <h3 className="font-medium mb-3">{t('models.details')}</h3>
+                    <dl className="space-y-2 text-sm">
+                      {members[0]?.releaseDate && (
+                        <div className="flex justify-between">
+                          <dt className="text-muted-foreground">{t('models.releaseDate')}</dt>
+                          <dd className="font-medium">{members[0].releaseDate}</dd>
+                        </div>
+                      )}
+                      {members[0]?.aaPricing && (
+                        <>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">{t('models.priceInput')}</dt>
+                            <dd className="font-medium">${members[0].aaPricing.price_1m_input_tokens?.toFixed(2)}/M</dd>
+                          </div>
+                          <div className="flex justify-between">
+                            <dt className="text-muted-foreground">{t('models.priceOutput')}</dt>
+                            <dd className="font-medium">${members[0].aaPricing.price_1m_output_tokens?.toFixed(2)}/M</dd>
+                          </div>
+                          {members[0].aaPricing.price_1m_blended_3_to_1 != null && (
+                            <div className="flex justify-between">
+                              <dt className="text-muted-foreground">{t('models.priceBlended')}</dt>
+                              <dd className="font-medium">${members[0].aaPricing.price_1m_blended_3_to_1?.toFixed(2)}/M</dd>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </dl>
+                  </div>
+                )}
+                
+                {members[0]?.aaBenchmarks && Object.keys(members[0].aaBenchmarks).length > 0 && (
+                  <div className="rounded-2xl border bg-card p-4">
+                    <h3 className="font-medium mb-3">{t('models.benchmarks')}</h3>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      {Object.entries(members[0].aaBenchmarks).map(([k, v]) => (
+                        <div key={k} className="flex flex-col p-2 bg-muted/50 rounded-lg">
+                          <span className="text-xs text-muted-foreground capitalize">{k.replace(/_/g, ' ')}</span>
+                          <span className="font-medium">{v !== null ? v : '-'}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="rounded-2xl border bg-card p-4">
               <div className="mb-3">
                 <h2 className="text-sm font-medium">{t('models.settingsHeading')}</h2>

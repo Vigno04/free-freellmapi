@@ -13,7 +13,8 @@
     "switchToChinese": "切换到中文",
     "switchToEnglish": "Switch to English",
     "modelsMenu": "浏览模型类型",
-    "catalog": "Catalogue"
+    "catalog": "Catalogue",
+    "settings": "设置"
   },
   "auth": {
     "createYourAccount": "创建账号",

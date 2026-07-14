@@ -116,6 +116,22 @@ export type Platform =
   // Ollama, any base_url). The endpoint URL lives on the api_keys row; see #117.
   | 'custom';
 
+export interface BaseModel {
+  id: number;
+  canonicalId: string;
+  groupLabel: string;
+  aaId?: string | null;
+  aaSlug?: string | null;
+  creator?: string;
+  codingScore?: number | null;
+  agenticScore?: number | null;
+  intelligenceScore?: number | null;
+  speedScore?: number | null;
+  releaseDate?: string | null;
+  pricing?: { price_1m_input_tokens?: number; price_1m_output_tokens?: number; price_1m_blended_3_to_1?: number };
+  benchmarks?: Record<string, number | null>;
+}
+
 export interface Model {
   id: number;
   platform: Platform;
@@ -133,6 +149,7 @@ export interface Model {
   enabled: boolean;
   supportsVision: boolean;
   supportsTools: boolean;
+  baseModelId?: number | null;
 }
 
 // ---- Quirks ----
@@ -208,6 +225,7 @@ export interface FallbackEntry {
   groupKey?: string;
   canonicalId?: string;
   groupLabel?: string;
+  baseModelId?: number | null;
 }
 
 // ---- Model Grouping (unify the same model across providers) ----

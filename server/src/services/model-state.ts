@@ -17,7 +17,11 @@ export interface ModelOverridePatch {
   supportsTools?: boolean;
 }
 
-type StoredOverrides = Partial<ModelOverridePatch>;
+export type StoredOverrides = Partial<ModelOverridePatch> & {
+  aaPricing?: { price_1m_input_tokens?: number; price_1m_output_tokens?: number; price_1m_blended_3_to_1?: number };
+  aaBenchmarks?: Record<string, number | null>;
+  releaseDate?: string;
+};
 
 const OVERRIDE_COLUMNS: Record<keyof ModelOverridePatch, string> = {
   displayName: 'display_name',
@@ -43,6 +47,7 @@ function parseOverrides(raw: string | undefined): StoredOverrides {
     return {};
   }
 }
+export { parseOverrides };
 
 function toDbValue(key: keyof ModelOverridePatch, value: unknown): unknown {
   if (key === 'supportsVision' || key === 'supportsTools') return value ? 1 : 0;
@@ -144,9 +149,15 @@ export function applyModelOverrides(
   const assignments: string[] = [];
   const values: unknown[] = [];
   for (const key of keys) {
-    assignments.push(`${OVERRIDE_COLUMNS[key]} = ?`);
-    values.push(toDbValue(key, overrides[key]));
+    const col = OVERRIDE_COLUMNS[key];
+    if (col) {
+      assignments.push(`${col} = ?`);
+      values.push(toDbValue(key, overrides[key]));
+    }
   }
+  
+  if (assignments.length === 0) return false;
+
   values.push(platform, modelId);
   db.prepare(`UPDATE models SET ${assignments.join(', ')} WHERE platform = ? AND model_id = ?`).run(...values);
   return true;

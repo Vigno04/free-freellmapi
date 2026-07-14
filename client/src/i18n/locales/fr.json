@@ -13,7 +13,8 @@
     "switchToChinese": "Passer au chinois",
     "switchToEnglish": "Passer à l'anglais",
     "modelsMenu": "Parcourir les types de modèles",
-    "catalog": "Catalogue"
+    "catalog": "Catalogue",
+    "settings": "Paramètres"
   },
   "auth": {
     "createYourAccount": "Créez votre compte",

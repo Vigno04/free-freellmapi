@@ -94,7 +94,10 @@ export function RowContent({
       <td className="py-2 pr-3 align-middle">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-medium text-sm">{row.displayName}</span>
-          <span className="text-xs text-muted-foreground">{providerLabel(row)}</span>
+          <span className="text-xs text-muted-foreground">
+            {row.creator ? `${row.creator} · ` : ''}{providerLabel(row)}
+          </span>
+          {/* Extra badges removed as requested */}
           {row.supportsVision && (
             <span
               title={t('models.visionTitle')}
@@ -124,9 +127,9 @@ export function RowContent({
               For real catalog budgets: show tok/mo and any rate limits.
               For rate-only models (no budget at all): show only rate limits. */}
           {[
-            (row.monthlyTokenBudgetTokens ?? 0) > 0 ? t('models.tokPerMonth', { count: row.monthlyTokenBudget }) : null,
-            !row.isEstimatedBudget && row.rpmLimit ? t('models.rpmLimit', { count: row.rpmLimit }) : null,
-            !row.isEstimatedBudget && row.rpdLimit ? t('models.rpdLimit', { count: row.rpdLimit }) : null,
+            (row.monthlyTokenBudgetTokens ?? 0) > 0 ? t('models.aggregateBudget', { count: row.monthlyTokenBudget }) : null,
+            !row.isEstimatedBudget && row.rpmLimit ? t('models.rateRpm', { count: row.rpmLimit }) : null,
+            !row.isEstimatedBudget && row.rpdLimit ? t('models.rateRpd', { count: row.rpdLimit }) : null,
           ].filter(Boolean).join(' · ') || cleanQuotaLabel(row.monthlyTokenBudget) || '—'}
         </div>
       </td>
@@ -187,11 +190,16 @@ export function GroupHeaderCells({ group, rank, dragHandle, onToggleGroup }: {
         <div className="flex items-center gap-1.5 min-w-0">
           <Link to={`/models/chat/${detailId}`} aria-label={t('models.viewProviders')} onClick={e => e.stopPropagation()} className="flex items-center gap-2 flex-wrap text-left min-w-0">
             <span className="font-medium text-sm">{group.label}</span>
-            {solo
-              ? <span className="text-xs text-muted-foreground">{providerLabel(group.members[0])}</span>
-              : <Tooltip text={t('models.servedBy', { providers: group.members.map(m => providerLabel(m)).join(', ') })}>
-                  <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-muted text-muted-foreground">{t('models.providerCount', { count: group.members.length })}</span>
-                </Tooltip>}
+            <span className="text-xs text-muted-foreground">
+              {best.creator ? `${best.creator} · ` : ''}
+              {solo ? providerLabel(group.members[0]) : ''}
+            </span>
+            {!solo && (
+              <Tooltip text={t('models.servedBy', { providers: group.members.map(m => providerLabel(m)).join(', ') })}>
+                <span className="text-[10px] rounded-full px-1.5 py-0.5 bg-muted text-muted-foreground">{t('models.providerCount', { count: group.members.length })}</span>
+              </Tooltip>
+            )}
+            {/* Extra badges removed as requested */}
             {quota && (
               <span title={quota.title} className="text-[10px] rounded-full px-1.5 py-0.5 bg-muted text-muted-foreground tabular-nums">
                 {quota.text}

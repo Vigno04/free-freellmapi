@@ -5,7 +5,7 @@ import { canMakeRequest, canUseTokens, isOnCooldown, canUseProvider, getSoonestC
 import {
   BANDIT_PRESETS, DEFAULT_STRATEGY, type RoutingStrategy, type RoutingWeights,
   reliabilityPosterior, expectedReliability, sampleBeta,
-  speedScore, intelligenceScore, headroomFactor, rateLimitFactor, combineScore,
+  speedScore, headroomFactor, rateLimitFactor, combineScore,
 } from './scoring.js';
 import { parseBudget } from '../lib/budget.js';
 import { platformDropsResponseFormat } from '../lib/sampling-params.js';
@@ -120,6 +120,7 @@ export interface ChainRow {
   supports_vision: number;
   supports_tools: number;
   context_window: number | null;
+  aa_intelligence_score: number | null;
   // Custom models bind to the api_keys row carrying their endpoint (#212);
   // NULL for built-in platforms.
   key_id: number | null;
@@ -395,15 +396,6 @@ export function refreshStatsCache(db: Db, force = false): void {
   statsCacheTime = Date.now();
 }
 
-// Composite intelligence: size_label is the cross-provider capability tier
-// (issue #135 — intelligence_rank is only meaningful within one provider), so
-// tier dominates and intelligence_rank breaks ties inside a tier.
-const TIER_VALUE: Record<string, number> = { Frontier: 4, Large: 3, Medium: 2, Small: 1 };
-function intelligenceComposite(sizeLabel: string, intelligenceRank: number): number {
-  const tier = TIER_VALUE[sizeLabel] ?? 0;
-  // tier*1000 keeps tiers strictly separated; -rank prefers lower rank in-tier.
-  return tier * 1000 - intelligenceRank;
-}
 
 // Per-model axis values + the final score. `sampled` chooses Thompson sampling
 // (for routing) vs. the expected value (for a stable dashboard display).
@@ -427,13 +419,11 @@ function usableKeyCountsByPlatform(db: Db): Map<string, number> {
   return new Map(rows.map(r => [r.platform, r.count]));
 }
 
-function scoreChainEntry(
+export function scoreChainEntry(
   entry: ChainRow,
   weights: RoutingWeights,
-  intelMin: number,
-  intelMax: number,
-  sampled: boolean,
-  keyCounts: Map<string, number>,
+  sampled = false,
+  keyCounts?: Map<string, number>,
 ): ScoredEntry {
   const stats = statsCache?.get(`${entry.platform}:${entry.model_id}`);
   const successes = stats?.successes ?? 0;
@@ -448,14 +438,12 @@ function scoreChainEntry(
   }
 
   const speed = speedScore(stats?.tokPerSec ?? 0, stats?.avgTtfbMs ?? null);
-  const intelligence = intelligenceScore(
-    intelligenceComposite(entry.size_label, entry.intelligence_rank), intelMin, intelMax,
-  );
+  const intelligence = entry.aa_intelligence_score != null ? Math.max(0, Math.min(1, entry.aa_intelligence_score / 100)) : 0;
 
   // Scale the per-key monthly budget by the usable key count for this platform,
   // matching the pooled `monthlyUsedTokens` aggregate (#456). Math.max(1, …) so a
   // model whose platform currently has no usable key isn't handed a 0 budget.
-  const budget = parseBudget(entry.monthly_token_budget) * Math.max(1, keyCounts.get(entry.platform) ?? 1);
+  const budget = parseBudget(entry.monthly_token_budget) * Math.max(1, keyCounts?.get(entry.platform) ?? 1);
   const headroom = headroomFactor(stats?.monthlyUsedTokens ?? 0, budget);
   const rl = rateLimitFactor(getPenalty(entry.model_db_id));
 
@@ -486,13 +474,10 @@ function orderChain(chain: ChainRow[], strategy: RoutingStrategy, sampled = true
       .map(x => x.e);
   }
 
-  const composites = chain.map(e => intelligenceComposite(e.size_label, e.intelligence_rank));
-  const intelMin = composites.length ? Math.min(...composites) : 0;
-  const intelMax = composites.length ? Math.max(...composites) : 0;
   const keyCounts = usableKeyCountsByPlatform(getDb());
 
   return chain
-    .map(e => ({ e, s: scoreChainEntry(e, weights, intelMin, intelMax, sampled, keyCounts).score }))
+    .map(e => ({ e, s: scoreChainEntry(e, weights, sampled, keyCounts).score }))
     // Higher score first; manual priority breaks ties so the chain still matters.
     .sort((a, b) => b.s - a.s || a.e.priority - b.e.priority)
     .map(x => x.e);
@@ -533,12 +518,13 @@ function getActiveChain(db: Db): ChainRow[] {
     const profileId = parseInt(activeProfileSetting.value, 10);
     const chain = db.prepare(`
       SELECT pm.model_db_id, pm.priority, pm.enabled,
-             m.platform, m.model_id, m.display_name, m.intelligence_rank,
+             m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
              m.size_label, m.monthly_token_budget,
              m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-             m.supports_tools, m.context_window, m.key_id
+             m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
       FROM profile_models pm
       JOIN models m ON m.id = pm.model_db_id AND m.enabled = 1
+      LEFT JOIN base_models bm ON m.base_model_id = bm.id
       WHERE pm.profile_id = ?
       ORDER BY pm.priority ASC
     `).all(profileId) as ChainRow[];
@@ -548,12 +534,13 @@ function getActiveChain(db: Db): ChainRow[] {
 
   return db.prepare(`
     SELECT fc.model_db_id, fc.priority, fc.enabled,
-           m.platform, m.model_id, m.display_name, m.intelligence_rank,
+           m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
            m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id
+           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM fallback_config fc
     JOIN models m ON m.id = fc.model_db_id AND m.enabled = 1
+    LEFT JOIN base_models bm ON m.base_model_id = bm.id
     ORDER BY fc.priority ASC
   `).all() as ChainRow[];
 }
@@ -564,12 +551,13 @@ function getChainByProfileName(db: Db, name: string): ChainRow[] | null {
 
   return db.prepare(`
     SELECT pm.model_db_id, pm.priority, pm.enabled,
-           m.platform, m.model_id, m.display_name, m.intelligence_rank,
+           m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
            m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id
+           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM profile_models pm
-    JOIN models m ON m.id = pm.model_db_id AND m.enabled = 1
+      JOIN models m ON m.id = pm.model_db_id AND m.enabled = 1
+      LEFT JOIN base_models bm ON m.base_model_id = bm.id
     WHERE pm.profile_id = ?
     ORDER BY pm.priority ASC
   `).all(profile.id) as ChainRow[];
@@ -578,11 +566,12 @@ function getChainByProfileName(db: Db, name: string): ChainRow[] | null {
 function getChainByGlobalSort(db: Db, globalAxis: string): ChainRow[] {
   const allEnabled = db.prepare(`
     SELECT m.id as model_db_id, 0 as priority, 1 as enabled,
-           m.platform, m.model_id, m.display_name, m.intelligence_rank,
+           m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
            m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id
+           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM models m
+    LEFT JOIN base_models bm ON m.base_model_id = bm.id
     WHERE m.enabled = 1
   `).all() as ChainRow[];
 
@@ -796,11 +785,12 @@ export function hasOtherUsableKey(modelDbId: number, excludingKeyId: number, ski
 function getModelChainRow(db: Db, modelDbId: number): ChainRow | undefined {
   return db.prepare(`
     SELECT m.id as model_db_id, 0 as priority, 1 as enabled,
-           m.platform, m.model_id, m.display_name, m.intelligence_rank,
+           m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
            m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id
+           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM models m
+    LEFT JOIN base_models bm ON m.base_model_id = bm.id
     WHERE m.id = ? AND m.enabled = 1
   `).get(modelDbId) as ChainRow | undefined;
 }
@@ -844,11 +834,12 @@ export function resolveModelGroupCandidates(memberDbIds: number[]): ChainRow[] {
   const selectMember = db.prepare(`
     SELECT m.id as model_db_id, COALESCE(fc.priority, 0) as priority,
            COALESCE(fc.enabled, 1) as enabled,
-           m.platform, m.model_id, m.display_name, m.intelligence_rank,
+           m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
            m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id
+           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM models m
+    LEFT JOIN base_models bm ON m.base_model_id = bm.id
     LEFT JOIN fallback_config fc ON fc.model_db_id = m.id
     WHERE m.id = ? AND m.enabled = 1
   `);
@@ -1007,11 +998,12 @@ export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, pre
       // explicit request by injecting it at the front.
       const pinnedRow = db.prepare(`
         SELECT m.id as model_db_id, 0 as priority, 1 as enabled,
-               m.platform, m.model_id, m.display_name, m.intelligence_rank,
+               m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
                m.size_label, m.monthly_token_budget,
                m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-               m.supports_tools, m.context_window, m.key_id
+               m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
         FROM models m
+        LEFT JOIN base_models bm ON m.base_model_id = bm.id
         WHERE m.id = ? AND m.enabled = 1
       `).get(preferredModelDbId) as ChainRow | undefined;
       
@@ -1111,25 +1103,24 @@ export function getRoutingScores(): { strategy: RoutingStrategy; weights: Routin
 
   const chain = db.prepare(`
     SELECT fc.model_db_id, fc.priority, fc.enabled,
-           m.platform, m.model_id, m.display_name, m.intelligence_rank,
+           m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
            m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window
+           m.supports_tools, m.context_window, bm.intelligence_score AS aa_intelligence_score
     FROM fallback_config fc
     JOIN models m ON m.id = fc.model_db_id
+    LEFT JOIN base_models bm ON m.base_model_id = bm.id
     WHERE m.enabled = 1
   `).all() as ChainRow[];
 
   // For display we score under 'balanced' weights when in priority mode, so the
   // table still shows a meaningful ranking even with the bandit turned off.
   const weights = weightsFor(strategy) ?? BANDIT_PRESETS.balanced;
-  const composites = chain.map(e => intelligenceComposite(e.size_label, e.intelligence_rank));
-  const intelMin = composites.length ? Math.min(...composites) : 0;
-  const intelMax = composites.length ? Math.max(...composites) : 0;
+  
   const keyCounts = usableKeyCountsByPlatform(db);
 
   const scores: RoutingScore[] = chain.map(entry => {
-    const scored = scoreChainEntry(entry, weights, intelMin, intelMax, false, keyCounts);
+    const scored = scoreChainEntry(entry, weights, false, keyCounts);
     const stats = statsCache?.get(`${entry.platform}:${entry.model_id}`);
     return {
       modelDbId: entry.model_db_id,

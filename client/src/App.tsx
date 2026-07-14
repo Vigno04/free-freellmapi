@@ -36,6 +36,7 @@ import MediaDetailPage from '@/pages/MediaDetailPage'
 import EmbeddingDetailPage from '@/pages/EmbeddingDetailPage'
 import AnalyticsPage from '@/pages/AnalyticsPage'
 import NotFoundPage from '@/pages/NotFoundPage'
+import SettingsPage from '@/pages/SettingsPage'
 
 // Every failed mutation surfaces as an error toast, so no action fails
 // silently. A page that already shows the failure inline can opt out with
@@ -236,6 +237,9 @@ function Navbar() {
               <MoreHorizontal />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem onClick={() => navigate('/settings')}>
+                {t('nav.settings')}
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={toggle} className="justify-between">
                 <span>{t('nav.theme')}</span>
                 {dark ? <Sun /> : <Moon />}
@@ -289,6 +293,9 @@ function Navbar() {
               </DropdownMenuGroup>
               <DropdownMenuSeparator />
               <DropdownMenuGroup>
+                <DropdownMenuItem onClick={() => navigate('/settings')}>
+                  {t('nav.settings')}
+                </DropdownMenuItem>
                 <DropdownMenuItem onClick={toggle} className="justify-between">
                   <span>{t('nav.theme')}</span>
                   {dark ? <Sun /> : <Moon />}
@@ -339,6 +346,7 @@ function App() {
                 <Route path="/keys" element={<KeysPage />} />
                 <Route path="/fallback" element={<Navigate to="/models/chat" replace />} />
                 <Route path="/analytics" element={<AnalyticsPage />} />
+                <Route path="/settings" element={<SettingsPage />} />
                 <Route path="/test" element={<Navigate to="/playground" replace />} />
                 <Route path="/health" element={<Navigate to="/keys" replace />} />
                 <Route path="*" element={<NotFoundPage />} />
