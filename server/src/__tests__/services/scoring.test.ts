@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  BANDIT_PRESETS, combineScore, speedScore, intelligenceScore,
+  BANDIT_PRESETS, combineScore, speedScore,
   headroomFactor, rateLimitFactor, sampleBeta, reliabilityPosterior,
   expectedReliability, SPEED_PRIOR, HEADROOM_FLOOR,
 } from '../../services/scoring.js';
@@ -43,18 +43,6 @@ describe('scoring: speed axis', () => {
 
   it('falls back to throughput-only when TTFB is unknown', () => {
     expect(speedScore(80, null)).toBeGreaterThan(0);
-  });
-});
-
-describe('scoring: intelligence axis', () => {
-  it('maps min→0, max→1', () => {
-    expect(intelligenceScore(1000, 1000, 4000)).toBeCloseTo(0, 5);
-    expect(intelligenceScore(4000, 1000, 4000)).toBeCloseTo(1, 5);
-    expect(intelligenceScore(2500, 1000, 4000)).toBeCloseTo(0.5, 5);
-  });
-
-  it('returns neutral-high when all models are equal', () => {
-    expect(intelligenceScore(5, 5, 5)).toBe(1);
   });
 });
 

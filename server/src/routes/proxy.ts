@@ -229,7 +229,7 @@ proxyRouter.get('/models', (req: Request, res: Response) => {
     fusion: false,
     autoIntelligent: false,
     autoFast: false,
-    autoBalanced: false,
+    autoBalanced: true,
   };
   if (exposedStr) {
     try { exposed = JSON.parse(exposedStr); } catch {}

@@ -438,7 +438,9 @@ export function scoreChainEntry(
   }
 
   const speed = speedScore(stats?.tokPerSec ?? 0, stats?.avgTtfbMs ?? null);
-  const intelligence = entry.aa_intelligence_score != null ? Math.max(0, Math.min(1, entry.aa_intelligence_score / 100)) : 0;
+  const intelligence = entry.aa_intelligence_score != null 
+      ? Math.max(0, Math.min(1, entry.aa_intelligence_score / 100)) 
+      : Math.max(0, 1 - ((entry.intelligence_rank - 1) / 20));
 
   // Scale the per-key monthly budget by the usable key count for this platform,
   // matching the pooled `monthlyUsedTokens` aggregate (#456). Math.max(1, …) so a

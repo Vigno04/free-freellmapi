@@ -11,7 +11,7 @@ const REQUEST_AGGREGATES_FILENAME = '20260628_120000_request_aggregates.ts';
 const GITHUB_GPT41_CONTEXT_FILENAME = '20260630_000001_github_gpt41_context.ts';
 const REQUEST_CLIENT_INFO_FILENAME = '20260706_000001_request_client_info.ts';
 const CUSTOM_MODEL_TOOL_SUPPORT_FILENAME = '20260706_000002_custom_model_tool_support.ts';
-const ARTIFICIAL_ANALYSIS_COLUMNS_FILENAME = '20260713_000000_artificial_analysis_columns.ts';
+const BASE_MODELS_ENTITY_FILENAME = '20260714_000000_base_models_entity.ts';
 
 interface SchemaRow {
   type: string;
@@ -69,7 +69,7 @@ describe('migration round trip', () => {
         GITHUB_GPT41_CONTEXT_FILENAME,
         REQUEST_CLIENT_INFO_FILENAME,
         CUSTOM_MODEL_TOOL_SUPPORT_FILENAME,
-        ARTIFICIAL_ANALYSIS_COLUMNS_FILENAME,
+        BASE_MODELS_ENTITY_FILENAME,
       ]);
     } finally {
       db.close();
@@ -88,9 +88,13 @@ describe('migration round trip', () => {
       // post-migration state, tools = 1) so the round trip actually exercises
       // that migration's down (tools -> 0) and up (tools -> 1).
       db.prepare(`
-        INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, supports_tools, supports_vision, enabled)
-        VALUES ('custom', 'roundtrip-custom', 'Roundtrip Custom', 50, 50, 1, 0, 1)
+        INSERT INTO base_models (canonical_id, group_label) VALUES ('roundtrip-custom', 'Roundtrip Custom')
       `).run();
+      const bmId = (db.prepare(`SELECT last_insert_rowid() as id`).get() as any).id;
+      db.prepare(`
+        INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, supports_tools, supports_vision, enabled, base_model_id)
+        VALUES ('custom', 'roundtrip-custom', 'Roundtrip Custom', 50, 50, 1, 0, 1, ?)
+      `).run(bmId);
 
       const fullState = snapshotAppState(db);
       await runDownToBaseline(db);

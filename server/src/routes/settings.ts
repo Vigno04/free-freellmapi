@@ -34,7 +34,7 @@ const defaultExposedModels = {
   fusion: false,
   autoIntelligent: false,
   autoFast: false,
-  autoBalanced: false,
+  autoBalanced: true,
 };
 
 settingsRouter.get('/exposed-models', (_req: Request, res: Response) => {

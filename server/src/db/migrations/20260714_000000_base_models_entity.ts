@@ -44,7 +44,7 @@ export function up(db: Db): void {
   }
 
   const insertBase = db.prepare(`
-    INSERT INTO base_models (canonical_id, group_label, aa_id, aa_slug, creator, coding_score, agentic_score, intelligence_score, speed_score, release_date, pricing_json, benchmarks_json)
+    INSERT OR IGNORE INTO base_models (canonical_id, group_label, aa_id, aa_slug, creator, coding_score, agentic_score, intelligence_score, speed_score, release_date, pricing_json, benchmarks_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   
