@@ -143,7 +143,7 @@
   },
   "strategies": {
     "title": "Strategia di routing",
-    "description": "Scegli una strategia di routing. In modalità Manuale trascini per impostare l'ordine; le altre strategie instradano in base al punteggio live tra affidabilità, velocità e intelligenza.",
+    "description": "Vedi come le diverse strategie influenzano l'ordine. Questo non cambia la strategia globale dell'API, ma ti mostra quali modelli verrebbero scelti per primi.",
     "weightsSummary": "affidabilità {reliability}% · velocità {speed}% · intelligenza {intelligence}%",
     "guardrails": "Protezioni",
     "guardrailsTooltip": "Protezioni sempre attive: margine quota gratuita × penalità limite di velocità live. Sotto 1.0 significa che il modello è trattenuto.",

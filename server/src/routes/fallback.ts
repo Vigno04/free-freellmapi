@@ -56,11 +56,18 @@ function computeEstimatedBudget(baseBudget: number, tpdLimit: number | null, tpm
 }
 
 // ── Bandit routing strategy ─────────────────────────────────────────────────
-// GET  /routing → active strategy, preset weights, and the per-model score
+// GET  /routing -> active strategy (or override), preset weights, and the per-model score
 //                 breakdown (reliability / speed / intelligence + guardrails).
 // fallbackRouter.use(requireAuth);
-fallbackRouter.get('/routing', (_req: Request, res: Response) => {
-  res.json(getRoutingScores());
+fallbackRouter.get('/routing', (req: Request, res: Response) => {
+  const strategy = req.query.strategy as any;
+  let weights = undefined;
+  if (req.query.weights && typeof req.query.weights === 'string') {
+    try {
+      weights = JSON.parse(req.query.weights);
+    } catch (e) {}
+  }
+  res.json(getRoutingScores(strategy, weights));
 });
 
 fallbackRouter.get('/penalty-inspector', (_req: Request, res: Response) => {

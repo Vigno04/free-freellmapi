@@ -7,7 +7,7 @@ import { routeRequest, resolveRoutingChain, resolveModelGroupCandidates, recordR
 import { recordRequest, recordTokens, setCooldown, getCooldownDurationForLimit, PAYMENT_REQUIRED_COOLDOWN_MS, MODEL_FORBIDDEN_COOLDOWN_MS, learnLimitFromError } from '../services/ratelimit.js';
 import { runEmbeddings, EmbeddingsError } from '../services/embeddings.js';
 import { runImageGeneration, runSpeech, MediaError } from '../services/media.js';
-import { getDb, getUnifiedApiKey } from '../db/index.js';
+import { getDb, getUnifiedApiKey, getSetting } from '../db/index.js';
 import { contentToString, messageHasImage, normalizeOutboundContent, sanitizeResponse } from '../lib/content.js';
 import { repairToolArguments, toolSchemaMap } from '../lib/tool-args.js';
 import { sanitizeProviderErrorMessage } from '../lib/error-redaction.js';
@@ -18,6 +18,7 @@ import { isRetryableError, isPaymentRequiredError, isModelNotFoundError, isModel
 import { logRequest } from '../lib/request-log.js';
 import { parseCacheDirective, cacheActive, isCacheableTemperature, computeCacheKey, getCachedResponse, storeCachedResponse } from '../services/cache.js';
 import { runFallbackLoop, newFallbackState, recordUpstreamSuccess, exhaustedRetryError, setFallbackHeaders, type AttemptRecord } from '../lib/fallback-loop.js';
+import type { RoutingStrategy } from '../services/scoring.js';
 import { applyTokenBudget, tokenBudgetMessage } from '../lib/guardrails.js';
 import { samplingParamSchemaFields, pickSamplingParams, supportedParametersForPlatforms } from '../lib/sampling-params.js';
 import { enforceJsonContent } from '../lib/structured-output.js';
@@ -222,53 +223,94 @@ proxyRouter.get('/models', (req: Request, res: Response) => {
   const onlyAvailable = q === '1' || q === 'true' || q === 'yes';
   const listed = onlyAvailable ? allListed.filter(m => m.available === 1) : allListed;
 
+  const exposedStr = getSetting('api_exposed_models');
+  let exposed = {
+    singular: true,
+    fusion: false,
+    autoIntelligent: false,
+    autoFast: false,
+    autoBalanced: false,
+  };
+  if (exposedStr) {
+    try { exposed = JSON.parse(exposedStr); } catch {}
+  }
+
+  const data: any[] = [];
+
+  if (exposed.autoBalanced) {
+    data.push({
+      id: AUTO_MODEL_ID,
+      object: 'model',
+      created: 0,
+      owned_by: 'freellmapi',
+      name: 'Auto (Balanced)',
+      context_window: autoContextWindow,
+      context_length: autoContextWindow,
+      available: true,
+      unavailable_reason: null,
+    });
+  }
+
+  if (exposed.autoIntelligent) {
+    data.push({
+      id: 'auto:smart',
+      object: 'model',
+      created: 0,
+      owned_by: 'freellmapi',
+      name: 'Auto (Intelligent)',
+      context_window: autoContextWindow,
+      context_length: autoContextWindow,
+      available: true,
+      unavailable_reason: null,
+    });
+  }
+
+  if (exposed.autoFast) {
+    data.push({
+      id: 'auto:fast',
+      object: 'model',
+      created: 0,
+      owned_by: 'freellmapi',
+      name: 'Auto (Fast)',
+      context_window: autoContextWindow,
+      context_length: autoContextWindow,
+      available: true,
+      unavailable_reason: null,
+    });
+  }
+
+  if (exposed.fusion) {
+    data.push({
+      id: FUSION_MODEL_ID,
+      object: 'model',
+      created: 0,
+      owned_by: 'freellmapi',
+      name: 'Fusion (panel of models answer in parallel, a judge synthesizes one answer)',
+      context_window: autoContextWindow,
+      context_length: autoContextWindow,
+      available: autoContextWindow != null,
+      unavailable_reason: autoContextWindow != null ? null : 'no_models',
+    });
+  }
+
+  if (exposed.singular) {
+    data.push(...listed.map(m => ({
+      id: m.id,
+      object: 'model',
+      created: 0,
+      owned_by: m.ownedBy,
+      name: m.name,
+      context_window: m.contextWindow,
+      context_length: m.contextWindow,
+      available: m.available === 1,
+      unavailable_reason: m.available === 1 ? null : (m.enabled === 1 ? 'no_key' : 'disabled'),
+      supported_parameters: supportedParametersForPlatforms(m.platforms, { tools: m.supportsTools }),
+    })));
+  }
+
   res.json({
     object: 'list',
-    data: [
-      {
-        id: AUTO_MODEL_ID,
-        object: 'model',
-        created: 0,
-        owned_by: 'freellmapi',
-        name: 'Auto (router picks the best available model)',
-        context_window: autoContextWindow,
-        // `context_length` is OpenRouter's field name and the one most
-        // OpenAI-compatible clients read; emit both so whichever a client
-        // looks for is populated. Additive — clients ignore unknown fields.
-        context_length: autoContextWindow,
-        available: true,
-        unavailable_reason: null,
-      },
-      {
-        id: FUSION_MODEL_ID,
-        object: 'model',
-        created: 0,
-        owned_by: 'freellmapi',
-        name: 'Fusion (panel of models answer in parallel, a judge synthesizes one answer)',
-        context_window: autoContextWindow,
-        context_length: autoContextWindow,
-        // Available whenever auto is — fusion needs at least one routable model.
-        available: autoContextWindow != null,
-        unavailable_reason: autoContextWindow != null ? null : 'no_models',
-      },
-      ...listed.map(m => ({
-        id: m.id,
-        object: 'model',
-        created: 0,
-        owned_by: m.ownedBy,
-        name: m.name,
-        context_window: m.contextWindow,
-        context_length: m.contextWindow,
-        // Non-standard but additive: OpenAI clients ignore unknown fields.
-        available: m.available === 1,
-        unavailable_reason: m.available === 1 ? null : (m.enabled === 1 ? 'no_key' : 'disabled'),
-        // OpenRouter's field name; agents use it to pick knobs per model. For
-        // a unify group this is the intersection over member platforms — a
-        // param is only advertised when every platform the router might pick
-        // honors it.
-        supported_parameters: supportedParametersForPlatforms(m.platforms, { tools: m.supportsTools }),
-      })),
-    ],
+    data,
   });
 });
 
@@ -678,8 +720,10 @@ proxyRouter.post('/completions', async (req: Request, res: Response) => {
   }
 
   let resolvedChain: ResolvedChain | undefined;
+  let strategyKey: string | undefined;
   if (isAutoModel(requestedModel)) {
     resolvedChain = resolveRoutingChain(requestedModel);
+    strategyKey = resolvedChain.strategyKey;
   }
 
   let preferredModel: number | undefined;
@@ -736,15 +780,20 @@ proxyRouter.post('/completions', async (req: Request, res: Response) => {
     state,
     attemptLog,
     clientGone: () => clientGone,
-    route: () => routeRequest(
-      estimatedTotal,
-      state.skipKeys.size > 0 ? state.skipKeys : undefined,
-      preferredModel,
-      false,
-      false,
-      state.skipModels.size > 0 ? state.skipModels : undefined,
-      groupChain ?? resolvedChain?.chain,
-    ),
+    route: () => {
+      const overrideStrategy = strategyKey === 'auto' ? 'balanced' : strategyKey as RoutingStrategy | undefined;
+      return routeRequest(
+        estimatedTotal,
+        state.skipKeys.size > 0 ? state.skipKeys : undefined,
+        preferredModel,
+        false,
+        false,
+        state.skipModels.size > 0 ? state.skipModels : undefined,
+        groupChain ?? resolvedChain?.chain,
+        false,
+        overrideStrategy
+      );
+    },
     dispatch: async (route, attempt) => {
       traceRouteEvent('Proxy', {
         event: attempt === 0 ? 'start' : 'next',
@@ -1458,7 +1507,8 @@ proxyRouter.post('/chat/completions', async (req: Request, res: Response) => {
       // model is on record). Turns where injection can't happen — every turn 1, and
       // sessions that never switched — pay no headroom tax.
       const routingEstimate = handoffPossible ? estimatedTotal + HANDOFF_MAX_TOKENS : estimatedTotal;
-      return routeRequest(routingEstimate, state.skipKeys.size > 0 ? state.skipKeys : undefined, preferredModel, hasImage, wantsTools, state.skipModels.size > 0 ? state.skipModels : undefined, groupChain ?? resolvedChain?.chain, samplingParams.response_format !== undefined);
+      const overrideStrategy = strategyKey === 'auto' ? 'balanced' : strategyKey as RoutingStrategy | undefined;
+      return routeRequest(routingEstimate, state.skipKeys.size > 0 ? state.skipKeys : undefined, preferredModel, hasImage, wantsTools, state.skipModels.size > 0 ? state.skipModels : undefined, groupChain ?? resolvedChain?.chain, samplingParams.response_format !== undefined, overrideStrategy);
     },
     dispatch: async (route, attempt) => {
     const modelKey = `${route.platform}:${route.modelId}`;

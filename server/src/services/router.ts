@@ -974,10 +974,10 @@ export function resolveFusionCandidate(modelId: string): FusionCandidate | null 
   return null;
 }
 
-export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, preferredModelDbId?: number, requireVision = false, requireTools = false, skipModels?: Set<number>, prefetchedChain?: ChainRow[], requireStructured = false): RouteResult {
+export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, preferredModelDbId?: number, requireVision = false, requireTools = false, skipModels?: Set<number>, prefetchedChain?: ChainRow[], requireStructured = false, strategyOverride?: RoutingStrategy): RouteResult {
   const db = getDb();
 
-  const strategy = getRoutingStrategy();
+  const strategy = strategyOverride || getRoutingStrategy();
   if (strategy !== 'priority') refreshStatsCache(db);
 
   const chain = prefetchedChain ?? getActiveChain(db).filter(e => e.enabled);
@@ -1096,10 +1096,10 @@ export interface RoutingScore {
   totalRequests: number; // decay-weighted observations
 }
 
-export function getRoutingScores(): { strategy: RoutingStrategy; weights: RoutingWeights | null; customWeights: RoutingWeights; scores: RoutingScore[] } {
+export function getRoutingScores(strategyOverride?: RoutingStrategy, weightsOverride?: RoutingWeights): { strategy: RoutingStrategy; weights: RoutingWeights | null; customWeights: RoutingWeights; scores: RoutingScore[] } {
   const db = getDb();
-  const strategy = getRoutingStrategy();
-  refreshStatsCache(db);
+  const strategy = strategyOverride || getRoutingStrategy();
+  if (strategy !== 'priority') refreshStatsCache(db);
 
   const chain = db.prepare(`
     SELECT fc.model_db_id, fc.priority, fc.enabled,
@@ -1115,7 +1115,7 @@ export function getRoutingScores(): { strategy: RoutingStrategy; weights: Routin
 
   // For display we score under 'balanced' weights when in priority mode, so the
   // table still shows a meaningful ranking even with the bandit turned off.
-  const weights = weightsFor(strategy) ?? BANDIT_PRESETS.balanced;
+  const weights = weightsOverride || (weightsFor(strategy) ?? BANDIT_PRESETS.balanced);
   
   const keyCounts = usableKeyCountsByPlatform(db);
 

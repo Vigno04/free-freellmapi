@@ -74,6 +74,8 @@ export default function FallbackPage() {
   const navigate = useNavigate()
   const queryClient = useQueryClient()
   const [localEntries, setLocalEntries] = useState<FallbackEntry[] | null>(null)
+  const [previewStrategy, setPreviewStrategy] = useState<RoutingStrategy>('balanced')
+  const [previewWeights, setPreviewWeights] = useState<RoutingWeights | undefined>(undefined)
 
   // Catalog search + filter state (#343).
   const [search, setSearch] = useState('')
@@ -92,8 +94,15 @@ export default function FallbackPage() {
   })
 
   const { data: routing } = useQuery<RoutingData>({
-    queryKey: ['fallback', 'routing'],
-    queryFn: () => apiFetch('/api/fallback/routing'),
+    queryKey: ['fallback', 'routing', previewStrategy, previewWeights],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      params.append('strategy', previewStrategy)
+      if (previewWeights) {
+        params.append('weights', JSON.stringify(previewWeights))
+      }
+      return apiFetch(`/api/fallback/routing?${params.toString()}`)
+    },
     refetchInterval: 15_000,
   })
 
@@ -106,13 +115,7 @@ export default function FallbackPage() {
     },
   })
 
-  const strategyMutation = useMutation({
-    mutationFn: (payload: { strategy: RoutingStrategy; weights?: RoutingWeights }) =>
-      apiFetch('/api/fallback/routing', { method: 'PUT', body: JSON.stringify(payload) }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['fallback', 'routing'] }),
-  })
-
-  const strategy: RoutingStrategy = routing?.strategy ?? 'balanced'
+  const strategy = previewStrategy
   const isManual = strategy === 'priority'
 
   // Merge fallback metadata with live scores, keyed by model.
@@ -257,8 +260,10 @@ export default function FallbackPage() {
             {STRATEGIES.map(s => (
               <Tooltip key={s.key} text={t(`strategies.${s.tKey}Blurb`)}>
                 <button
-                  disabled={strategyMutation.isPending}
-                  onClick={() => strategyMutation.mutate({ strategy: s.key })}
+                  onClick={() => {
+                    setPreviewStrategy(s.key)
+                    if (s.key !== 'custom') setPreviewWeights(undefined)
+                  }}
                   className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
                     s.key === strategy
                       ? 'bg-foreground text-background font-medium'
@@ -271,9 +276,12 @@ export default function FallbackPage() {
             ))}
             {strategy === 'custom' && routing && (
               <CustomWeightsPopover
-                saved={routing.customWeights}
-                saving={strategyMutation.isPending}
-                onSave={w => strategyMutation.mutate({ strategy: 'custom', weights: w })}
+                saved={previewWeights || routing.customWeights}
+                saving={false}
+                onSave={w => {
+                  setPreviewStrategy('custom')
+                  setPreviewWeights(w)
+                }}
               />
             )}
           </div>

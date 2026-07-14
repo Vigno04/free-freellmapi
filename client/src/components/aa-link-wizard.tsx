@@ -29,6 +29,8 @@ export function AALinkWizard() {
       toast.success('Link updated successfully')
       queryClient.invalidateQueries({ queryKey: ['settings', 'artificial-analysis-models'] })
       queryClient.invalidateQueries({ queryKey: ['models'] })
+      queryClient.invalidateQueries({ queryKey: ['fallback'] })
+      queryClient.invalidateQueries({ queryKey: ['catalogs'] })
     },
     onError: (err: any) => {
       toast.error(err.message || 'Failed to update link')
@@ -41,6 +43,8 @@ export function AALinkWizard() {
       toast.success(`Reset ${res.reset_count} manual links. You can now re-run Sync.`)
       queryClient.invalidateQueries({ queryKey: ['settings', 'artificial-analysis-models'] })
       queryClient.invalidateQueries({ queryKey: ['models'] })
+      queryClient.invalidateQueries({ queryKey: ['fallback'] })
+      queryClient.invalidateQueries({ queryKey: ['catalogs'] })
     },
     onError: (err: any) => toast.error(err.message || 'Failed to reset links')
   })

@@ -29,6 +29,45 @@ settingsRouter.put('/openrouter', (req: Request, res: Response) => {
   res.json({ highTier });
 });
 
+const defaultExposedModels = {
+  singular: true,
+  fusion: false,
+  autoIntelligent: false,
+  autoFast: false,
+  autoBalanced: false,
+};
+
+settingsRouter.get('/exposed-models', (_req: Request, res: Response) => {
+  const raw = getSetting('api_exposed_models');
+  if (raw) {
+    try {
+      res.json(JSON.parse(raw));
+      return;
+    } catch {
+      // Fallback below
+    }
+  }
+  res.json(defaultExposedModels);
+});
+
+const exposedModelsSchema = z.object({
+  singular: z.boolean(),
+  fusion: z.boolean(),
+  autoIntelligent: z.boolean(),
+  autoFast: z.boolean(),
+  autoBalanced: z.boolean(),
+});
+
+settingsRouter.put('/exposed-models', (req: Request, res: Response) => {
+  const parsed = exposedModelsSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: { message: 'Invalid exposed models config' } });
+    return;
+  }
+  setSetting('api_exposed_models', JSON.stringify(parsed.data));
+  res.json(parsed.data);
+});
+
 // Get the model-unification setting: the global toggle (default ON) plus any
 // merge/split overrides. Governs the dashboard grouping, /v1/models grouping,
 // and cross-provider pin failover.
@@ -251,8 +290,9 @@ settingsRouter.put('/artificial-analysis/key', (req: Request, res: Response) => 
 });
 
 // Test/Sync Artificial Analysis API
-settingsRouter.post('/artificial-analysis/test', async (_req: Request, res: Response) => {
+settingsRouter.post('/artificial-analysis/test', async (req: Request, res: Response) => {
   const db = getDb();
+  const action = (req.body as any)?.action || 'link'; // 'refresh_list', 'link', 'refresh_data', 'reset_model'
   const row = db.prepare("SELECT * FROM api_keys WHERE platform = 'artificial_analysis' LIMIT 1").get() as { encrypted_key: string, iv: string, auth_tag: string } | undefined;
   if (!row) {
     res.status(400).json({ error: { message: 'No Artificial Analysis API key configured', type: 'invalid_request_error' } });
@@ -282,6 +322,20 @@ settingsRouter.post('/artificial-analysis/test', async (_req: Request, res: Resp
     const data = await response.json() as any;
     
     const models = Array.isArray(data) ? data : (data.models || data.data || []);
+    
+    if (action === 'refresh_list') {
+      res.json({ success: true, count: models.length, applied_updates: 0, models: [] });
+      return;
+    }
+
+    if (action === 'reset_model') {
+      db.prepare(`
+        UPDATE base_models 
+        SET aa_id = NULL, aa_slug = NULL, coding_score = NULL, agentic_score = NULL, intelligence_score = NULL, speed_score = NULL, release_date = NULL, pricing_json = NULL, benchmarks_json = NULL, updated_at = datetime('now')
+        WHERE aa_id IS NOT NULL OR aa_slug IS NOT NULL
+      `).run();
+    }
+
     const baseModels = db.prepare(`
       SELECT * FROM base_models 
       WHERE canonical_id NOT LIKE '%embedding%' 
@@ -320,7 +374,7 @@ settingsRouter.post('/artificial-analysis/test', async (_req: Request, res: Resp
         match = aaProcessed.find((m: any) => m.id === bm.aa_id || m._slug === bm.aa_slug);
       }
       
-      if (!match) {
+      if (!match && action !== 'refresh_data') {
         const canonical = bm.canonical_id;
         const groupLabel = bm.group_label.toLowerCase();
         

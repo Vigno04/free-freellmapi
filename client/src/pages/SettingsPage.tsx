@@ -7,6 +7,15 @@ import { Input } from '@/components/ui/input'
 import { PageHeader } from '@/components/page-header'
 import { toast } from '@/lib/toast'
 import { AALinkWizard } from '@/components/aa-link-wizard'
+import { Switch } from '@/components/ui/switch'
+
+interface ExposedModelsConfig {
+  singular: boolean;
+  fusion: boolean;
+  autoBalanced: boolean;
+  autoIntelligent: boolean;
+  autoFast: boolean;
+}
 
 export default function SettingsPage() {
   const queryClient = useQueryClient()
@@ -36,14 +45,24 @@ export default function SettingsPage() {
   })
 
   const syncMutation = useMutation({
-    mutationFn: () =>
+    mutationFn: (action: string) =>
       apiFetch('/api/settings/artificial-analysis/test', {
         method: 'POST',
+        body: JSON.stringify({ action }),
       }),
-    onSuccess: (data: any) => {
-      toast.success(`Successfully fetched ${data.count} models and applied ${data.applied_updates} local overrides.`)
+    onSuccess: (data: any, action: string) => {
+      let msg = ''
+      if (action === 'refresh_list') {
+        msg = `Successfully fetched ${data.count} models.`
+      } else {
+        msg = `Successfully fetched ${data.count} models and applied ${data.applied_updates} local overrides.`
+      }
+      toast.success(msg)
       // Refresh models table to show the new data
       queryClient.invalidateQueries({ queryKey: ['models'] })
+      queryClient.invalidateQueries({ queryKey: ['fallback'] })
+      queryClient.invalidateQueries({ queryKey: ['catalogs'] })
+      queryClient.invalidateQueries({ queryKey: ['settings', 'artificial-analysis-models'] })
     },
   })
 
@@ -52,8 +71,8 @@ export default function SettingsPage() {
     saveMutation.mutate(apiKey.trim())
   }
 
-  function handleSync() {
-    syncMutation.mutate()
+  function handleAction(action: string) {
+    syncMutation.mutate(action)
   }
 
   return (
@@ -61,6 +80,8 @@ export default function SettingsPage() {
       <PageHeader title="Settings" description="Manage global settings and integrations." divider={true} />
 
       <div className="space-y-6">
+        <ExposedModelsPanel />
+
         <div className="rounded-2xl border bg-card p-6">
           <div className="mb-4">
             <h2 className="text-lg font-medium flex items-center gap-2">
@@ -91,15 +112,24 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="flex items-center gap-4 mt-2">
-              <Button onClick={handleSync} disabled={syncMutation.isPending || !keyData?.hasKey} variant="secondary">
+            <div className="flex flex-wrap items-center gap-2 mt-4">
+              <Button onClick={() => handleAction('refresh_list')} disabled={syncMutation.isPending || !keyData?.hasKey} variant="secondary" size="sm">
                 <RefreshCw className={`size-4 mr-2 ${syncMutation.isPending ? 'animate-spin' : ''}`} />
-                Test API & Sync Models
+                Refresh List
+              </Button>
+              <Button onClick={() => handleAction('link')} disabled={syncMutation.isPending || !keyData?.hasKey} variant="secondary" size="sm">
+                Run Linking
+              </Button>
+              <Button onClick={() => handleAction('refresh_data')} disabled={syncMutation.isPending || !keyData?.hasKey} variant="secondary" size="sm">
+                Refresh Data
+              </Button>
+              <Button onClick={() => handleAction('reset_model')} disabled={syncMutation.isPending || !keyData?.hasKey} variant="destructive" size="sm">
+                Reset Model
               </Button>
               {keyData?.hasKey && <AALinkWizard />}
             </div>
             
-            {syncMutation.data && (
+            {syncMutation.data && syncMutation.variables !== 'refresh_list' && (
                <div className="mt-4 rounded-xl border p-4 bg-muted/50">
                  <h3 className="text-sm font-medium mb-2">Sync Results</h3>
                  <p className="text-xs text-muted-foreground mb-4">
@@ -134,6 +164,88 @@ export default function SettingsPage() {
             </a>
           </div>
         </div>
+      </div>
+    </div>
+  )
+}
+
+function ExposedModelsPanel() {
+  const queryClient = useQueryClient()
+  const { data: exposed, isLoading } = useQuery<ExposedModelsConfig>({
+    queryKey: ['settings', 'exposed-models'],
+    queryFn: () => apiFetch('/api/settings/exposed-models'),
+  })
+
+  const updateMutation = useMutation({
+    mutationFn: (newExposed: ExposedModelsConfig) =>
+      apiFetch('/api/settings/exposed-models', {
+        method: 'PUT',
+        body: JSON.stringify(newExposed),
+      }),
+    onSuccess: () => {
+      toast.success('Exposed models updated')
+      queryClient.invalidateQueries({ queryKey: ['settings', 'exposed-models'] })
+    },
+  })
+
+  if (isLoading) return null
+
+  const handleToggle = (key: string, checked: boolean) => {
+    if (!exposed) return
+    updateMutation.mutate({ ...exposed, [key]: checked })
+  }
+
+  return (
+    <div className="rounded-2xl border bg-card p-6">
+      <div className="mb-4">
+        <h2 className="text-lg font-medium flex items-center gap-2">
+          API Exposed Models
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Select which models should be exposed in the /v1/models endpoint for API clients.
+        </p>
+      </div>
+
+      <div className="grid gap-4 max-w-xl">
+        <label className="flex items-center space-x-3 cursor-pointer">
+          <Switch 
+            checked={exposed?.singular ?? true} 
+            onCheckedChange={(c: boolean) => handleToggle('singular', c)} 
+          />
+          <span className="text-sm font-medium">Singular Models</span>
+        </label>
+        
+        <label className="flex items-center space-x-3 cursor-pointer">
+          <Switch 
+            checked={exposed?.fusion ?? true} 
+            onCheckedChange={(c: boolean) => handleToggle('fusion', c)} 
+          />
+          <span className="text-sm font-medium">Fusion</span>
+        </label>
+
+        <label className="flex items-center space-x-3 cursor-pointer">
+          <Switch 
+            checked={exposed?.autoBalanced ?? true} 
+            onCheckedChange={(c: boolean) => handleToggle('autoBalanced', c)} 
+          />
+          <span className="text-sm font-medium">Auto (Balanced)</span>
+        </label>
+
+        <label className="flex items-center space-x-3 cursor-pointer">
+          <Switch 
+            checked={exposed?.autoIntelligent ?? true} 
+            onCheckedChange={(c: boolean) => handleToggle('autoIntelligent', c)} 
+          />
+          <span className="text-sm font-medium">Auto (Intelligent)</span>
+        </label>
+
+        <label className="flex items-center space-x-3 cursor-pointer">
+          <Switch 
+            checked={exposed?.autoFast ?? true} 
+            onCheckedChange={(c: boolean) => handleToggle('autoFast', c)} 
+          />
+          <span className="text-sm font-medium">Auto (Fast)</span>
+        </label>
       </div>
     </div>
   )
