@@ -516,10 +516,15 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
       continue;
     }
     
+    const hasText = modStr.includes('text') || modStr.includes('reasoning') || modStr.includes('code');
     const isImage = modStr.includes('image') || modStr.includes('video');
     const isAudio = modStr.includes('audio');
-    const modality = isImage ? 'image' : (isAudio ? 'audio' : 'text');
-    const supportsVision = modStr.includes('vision');
+    
+    let modality = 'text';
+    if (!hasText && isImage) modality = 'image';
+    else if (!hasText && isAudio) modality = 'audio';
+    
+    const supportsVision = modStr.includes('vision') || (hasText && isImage);
 
     // Extract size label (e.g. "70B", "1.5B") from the name if present, else fallback to "Free"
     const sizeMatch = attrs.name.match(/(?<![a-zA-Z])(\d+(?:\.\d+)?(?:B|M|T|Trillion|Billion))(?![a-zA-Z])/i);
