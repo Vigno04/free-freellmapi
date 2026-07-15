@@ -495,12 +495,14 @@ settingsRouter.get('/artificial-analysis/models', async (_req: Request, res: Res
     // Also fetch base models so UI knows what is currently linked.
     // Exclude common embedding models that shouldn't be linked to AA.
     const baseModels = db.prepare(`
-      SELECT * FROM base_models 
-      WHERE canonical_id NOT LIKE '%embedding%' 
-        AND canonical_id NOT LIKE '%bge%' 
-        AND canonical_id NOT LIKE '%rerank%'
-        AND canonical_id NOT LIKE '%text-embedding%'
-      ORDER BY group_label ASC
+      SELECT DISTINCT bm.* 
+      FROM base_models bm
+      JOIN models m ON m.base_model_id = bm.id
+      WHERE bm.canonical_id NOT LIKE '%embedding%' 
+        AND bm.canonical_id NOT LIKE '%bge%' 
+        AND bm.canonical_id NOT LIKE '%rerank%'
+        AND bm.canonical_id NOT LIKE '%text-embedding%'
+      ORDER BY bm.group_label ASC
     `).all();
 
     res.json({ aaModels: lightweightModels, baseModels });

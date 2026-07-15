@@ -508,7 +508,7 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     const contextWindow = attrs.context ? parseInt(attrs.context, 10) : null;
     
     // Process modalities
-    const modStr = attrs.modality || '';
+    const modStr = (attrs.modality || '').toLowerCase();
     if (modStr.includes('embedding') || modStr.includes('rerank')) {
       // Embedding models are handled by embedding_models table, not the chat/media catalog
       continue;
@@ -528,7 +528,7 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
       modelId,
       displayName: attrs.name,
       intelligenceRank: attrs.score ? parseInt(attrs.score, 10) : 50,
-      speedRank: 50,
+      speedRank: 0,
       sizeLabel,
       limits: { rpm, rpd, tpm, tpd },
       monthlyTokenBudget: '',
@@ -640,7 +640,7 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
           modelId: apiModelId,
           displayName: mSlug,
           intelligenceRank: 50,
-          speedRank: 50,
+          speedRank: 0,
           sizeLabel: 'Free',
           limits: { rpm: null, rpd: null, tpm: null, tpd: null },
           monthlyTokenBudget: '',

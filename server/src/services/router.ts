@@ -438,9 +438,9 @@ export function scoreChainEntry(
   }
 
   const speed = speedScore(stats?.tokPerSec ?? 0, stats?.avgTtfbMs ?? null);
-  const intelligence = entry.aa_intelligence_score != null 
-      ? Math.max(0, Math.min(1, entry.aa_intelligence_score / 100)) 
-      : Math.max(0, 1 - ((entry.intelligence_rank - 1) / 20));
+  const intelligence = entry.aa_intelligence_score != null
+    ? Math.max(0, Math.min(1, entry.aa_intelligence_score / 65))
+    : Math.max(0, 1 - ((entry.intelligence_rank - 1) / 20));
 
   // Scale the per-key monthly budget by the usable key count for this platform,
   // matching the pooled `monthlyUsedTokens` aggregate (#456). Math.max(1, …) so a
@@ -530,7 +530,7 @@ function getActiveChain(db: Db): ChainRow[] {
       WHERE pm.profile_id = ?
       ORDER BY pm.priority ASC
     `).all(profileId) as ChainRow[];
-    
+
     if (chain.length > 0) return chain;
   }
 
@@ -585,7 +585,7 @@ function getChainByGlobalSort(db: Db, globalAxis: string): ChainRow[] {
     'balanced': 'balanced'
   };
   const strat = strategyMap[globalAxis] || 'balanced';
-  
+
   return orderChain(allEnabled, strat);
 }
 
@@ -1008,7 +1008,7 @@ export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, pre
         LEFT JOIN base_models bm ON m.base_model_id = bm.id
         WHERE m.id = ? AND m.enabled = 1
       `).get(preferredModelDbId) as ChainRow | undefined;
-      
+
       if (pinnedRow) {
         sortedChain.unshift(pinnedRow);
       }
@@ -1118,7 +1118,7 @@ export function getRoutingScores(strategyOverride?: RoutingStrategy, weightsOver
   // For display we score under 'balanced' weights when in priority mode, so the
   // table still shows a meaningful ranking even with the bandit turned off.
   const weights = weightsOverride || (weightsFor(strategy) ?? BANDIT_PRESETS.balanced);
-  
+
   const keyCounts = usableKeyCountsByPlatform(db);
 
   const scores: RoutingScore[] = chain.map(entry => {
