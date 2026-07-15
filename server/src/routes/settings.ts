@@ -497,11 +497,13 @@ settingsRouter.get('/artificial-analysis/models', async (_req: Request, res: Res
     const baseModels = db.prepare(`
       SELECT * 
       FROM base_models 
-      WHERE id IN (SELECT base_model_id FROM models WHERE base_model_id IS NOT NULL)
-        AND canonical_id NOT LIKE '%embedding%' 
+      WHERE canonical_id NOT LIKE '%embedding%' 
         AND canonical_id NOT LIKE '%bge%' 
         AND canonical_id NOT LIKE '%rerank%'
         AND canonical_id NOT LIKE '%text-embedding%'
+        AND canonical_id NOT LIKE '%image%'
+        AND canonical_id NOT LIKE '%audio%'
+        AND canonical_id NOT LIKE '%vision%'
       ORDER BY group_label ASC
     `).all();
 
