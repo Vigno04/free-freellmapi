@@ -249,9 +249,42 @@ export function getModelGroups(): ModelGroup[] {
   const rows = db.prepare(`
     SELECT 
       m.id as model_db_id, m.platform, m.model_id, m.display_name, m.intelligence_rank,
-      b.id as base_model_id, b.canonical_id as base_model_canonical_id, b.group_label as base_model_group_label
+      m.base_model_id, b.canonical_id as base_model_canonical_id, b.group_label as base_model_group_label
     FROM models m
     LEFT JOIN base_models b ON m.base_model_id = b.id
   `).all() as GroupableRow[];
+  
   return groupRows(rows, getUnifyOverrides());
+}
+
+/**
+ * Ensure every model has a corresponding base_model row.
+ * Newly synced models from the catalog initially have base_model_id = NULL.
+ */
+export function ensureBaseModels(db: any): void {
+  const models = db.prepare('SELECT id, display_name FROM models WHERE base_model_id IS NULL').all() as { id: number, display_name: string }[];
+  if (models.length === 0) return;
+
+  const insertBase = db.prepare(`
+    INSERT OR IGNORE INTO base_models (canonical_id, group_label)
+    VALUES (?, ?)
+  `);
+  const getBaseId = db.prepare('SELECT id FROM base_models WHERE canonical_id = ?');
+  const updateModel = db.prepare('UPDATE models SET base_model_id = ? WHERE id = ?');
+
+  const baseModelsCache = new Map<string, number>();
+
+  for (const model of models) {
+    const strippedLabel = stripProviderSuffix(model.display_name);
+    const canonicalId = slugifyGroupLabel(strippedLabel);
+    
+    let baseModelId = baseModelsCache.get(canonicalId);
+    if (!baseModelId) {
+      insertBase.run(canonicalId, strippedLabel);
+      const row = getBaseId.get(canonicalId) as { id: number };
+      baseModelId = row.id;
+      baseModelsCache.set(canonicalId, baseModelId);
+    }
+    updateModel.run(baseModelId, model.id);
+  }
 }

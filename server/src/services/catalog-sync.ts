@@ -11,7 +11,7 @@ import {
   deleteTombstonedCatalogModels,
   isCatalogModelTombstoned,
 } from './model-state.js';
-import { normalizeGroupKey } from './model-groups.js';
+import { normalizeGroupKey, ensureBaseModels } from './model-groups.js';
 
 // Generative-media modalities are routed into the separate media_models table
 // (see services/media.ts), never into the chat `models` table.
@@ -371,6 +371,8 @@ export function applyCatalog(db: Db, catalog: Catalog): NonNullable<SyncResult['
       for (const t of q.targets) insertTarget.run(info.lastInsertRowid, t.platform ?? null, t.modelGlob ?? null);
       counts.quirks++;
     }
+
+    ensureBaseModels(db);
   });
 
   apply();
