@@ -7,6 +7,7 @@ import { BaseProvider, providerHttpError, type CompletionOptions } from './base.
 import { extendedBodyParams } from '../lib/sampling-params.js';
 import { contentToString } from '../lib/content.js';
 import { recordQuotaObservationsFromResponse, type QuotaObservationContext } from '../services/provider-quota.js';
+import { providerTimeoutMs } from '../lib/provider-timeout.js';
 
 /**
  * Cloudflare Workers AI provider.
@@ -17,7 +18,8 @@ import { recordQuotaObservationsFromResponse, type QuotaObservationContext } fro
 // Workers AI hosts reasoning models (@cf/zai-org/glm-4.7-flash) that spend
 // well over the 15s fetch default before the first byte (live sweep
 // 2026-07-11: repeated 15s aborts). Matches zhipu/agnes/ollama bumps.
-const CHAT_TIMEOUT_MS = 60_000;
+// PROVIDER_TIMEOUT_CLOUDFLARE overrides (#547).
+const CHAT_TIMEOUT_MS = providerTimeoutMs('cloudflare', 60_000);
 
 export class CloudflareProvider extends BaseProvider {
   readonly platform = 'cloudflare' as const;

@@ -11,6 +11,7 @@ import { BaseProvider, providerHttpError, type CompletionOptions } from './base.
 import { contentToString } from '../lib/content.js';
 import { proxyFetch } from '../lib/proxy.js';
 import { recordQuotaObservationsFromResponse, type QuotaObservationContext } from '../services/provider-quota.js';
+import { providerTimeoutMs } from '../lib/provider-timeout.js';
 
 const API_BASE = 'https://generativelanguage.googleapis.com/v1beta';
 
@@ -535,7 +536,8 @@ export class GoogleProvider extends BaseProvider {
 
   constructor(opts: GoogleProviderOptions = {}) {
     super();
-    this.timeoutMs = opts.timeoutMs ?? 15000;
+    // PROVIDER_TIMEOUT_GOOGLE wins over the registration default (#547).
+    this.timeoutMs = providerTimeoutMs('google', opts.timeoutMs ?? 15000);
   }
 
   async chatCompletion(

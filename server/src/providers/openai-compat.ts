@@ -10,6 +10,7 @@ import { extendedBodyParams } from '../lib/sampling-params.js';
 import { rescueInlineToolCalls } from '../lib/tool-call-rescue.js';
 import { repairToolArguments, toolSchemaMap } from '../lib/tool-args.js';
 import { recordQuotaObservationsFromResponse, type QuotaObservationContext } from '../services/provider-quota.js';
+import { providerTimeoutMs } from '../lib/provider-timeout.js';
 
 /**
  * Generic provider for platforms that use an OpenAI-compatible API.
@@ -47,7 +48,8 @@ export class OpenAICompatProvider extends BaseProvider {
     this.baseUrl = opts.baseUrl;
     this.extraHeaders = opts.extraHeaders ?? {};
     this.validateUrl = opts.validateUrl;
-    this.timeoutMs = opts.timeoutMs ?? 60_000;
+    // PROVIDER_TIMEOUT_<PLATFORM> wins over the registration default (#547).
+    this.timeoutMs = providerTimeoutMs(opts.platform, opts.timeoutMs ?? 60_000);
     this.keyless = opts.keyless ?? false;
     this.forceSingleToolCall = opts.forceSingleToolCall ?? false;
   }
@@ -84,6 +86,19 @@ export class OpenAICompatProvider extends BaseProvider {
       type: 'function' as const,
       function: { name: c.name, arguments: repairToolArguments(c.arguments, schemas.get(c.name)) },
     }));
+  }
+
+  /** Extract the useful text from an upstream error body. Most providers put it
+   * at error.message, but NVIDIA NIM answers RFC7807-style ({"title": ...,
+   * "detail": "Function id '...': DEGRADED function cannot be invoked"}) — the
+   * old error.message-only read collapsed that to "Bad Request", so neither the
+   * logs nor the error classifier could ever see the DEGRADED marker (#522). */
+  private upstreamErrorText(errBody: unknown, res: Response): string {
+    const e = errBody as { error?: { message?: unknown }; detail?: unknown; title?: unknown };
+    if (typeof e?.error?.message === 'string' && e.error.message) return e.error.message;
+    if (typeof e?.detail === 'string' && e.detail) return e.detail;
+    if (typeof e?.title === 'string' && e.title) return e.title;
+    return res.statusText;
   }
 
   /** Keyless providers (Kilo's anonymous free tier) must send NO Authorization
@@ -187,7 +202,7 @@ export class OpenAICompatProvider extends BaseProvider {
         out._routed_via = { platform: this.platform, model: modelId };
         return out;
       }
-      throw providerHttpError(res, `${this.name} API error ${res.status}: ${(err as any).error?.message ?? res.statusText}`);
+      throw providerHttpError(res, `${this.name} API error ${res.status}: ${this.upstreamErrorText(err, res)}`);
     }
 
     let data: ChatCompletionResponse;
@@ -295,7 +310,7 @@ export class OpenAICompatProvider extends BaseProvider {
         yield { ...base, choices: [{ index: 0, delta: {}, finish_reason: 'tool_calls' }] };
         return;
       }
-      throw providerHttpError(res, `${this.name} API error ${res.status}: ${(err as any).error?.message ?? res.statusText}`);
+      throw providerHttpError(res, `${this.name} API error ${res.status}: ${this.upstreamErrorText(err, res)}`);
     }
 
     yield* this.readSseStream(res);

@@ -7,6 +7,7 @@ import type {
 } from '@freellmapi/shared/types.js';
 import { BaseProvider, providerHttpError, type CompletionOptions } from './base.js';
 import { recordQuotaObservationsFromResponse, type QuotaObservationContext } from '../services/provider-quota.js';
+import { providerTimeoutMs } from '../lib/provider-timeout.js';
 
 /**
  * AI Horde — free, community-powered inference served by volunteer workers and
@@ -41,7 +42,8 @@ import { recordQuotaObservationsFromResponse, type QuotaObservationContext } fro
 const ANON_KEY = '0000000000';
 const MIN_MAX_TOKENS = 16;
 const DEFAULT_MAX_TOKENS = 512;
-const HORDE_TIMEOUT_MS = 120000;
+// PROVIDER_TIMEOUT_AIHORDE overrides (#547).
+const HORDE_TIMEOUT_MS = providerTimeoutMs('aihorde', 120000);
 
 /** Rough token estimate (~4 chars/token) used only to fill usage when the proxy
  * returns kudos instead of token counts. Good enough for analytics, never

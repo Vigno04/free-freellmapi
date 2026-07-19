@@ -28,6 +28,11 @@ export function isRetryableError(err: any): boolean {
     || msg.includes('econnrefused') || msg.includes('econnreset')
     || msg.includes('fetch failed')    // undici transport error (proxy down, DNS, TLS, etc.)
     || msg.includes('503') || msg.includes('unavailable')
+    // Provider marks the hosted deployment itself as sick (NVIDIA NIM's
+    // "DEGRADED function cannot be invoked" arrives as a 400, #522). The
+    // 'api error 400' rule below already catches the NIM shape; this keeps
+    // degraded conditions retryable even when a provider words it differently.
+    || msg.includes('degraded')
     || msg.includes('500') || msg.includes('internal server error')
     // 413: this model's payload limit is too small for the request, but another
     // provider in the fallback chain may have a larger limit. Same reasoning as 503.
@@ -134,10 +139,22 @@ export function isDailyQuotaExhaustedError(err: any): boolean {
   return /allocation|quota|limit|exhaust|used up/.test(msg);
 }
 
+// A provider-side "this hosted model is temporarily degraded" condition dressed
+// up as a 400. Observed live on NVIDIA NIM (issue #522): a degraded function
+// returns `400 {"detail":"Function id '...': DEGRADED function cannot be
+// invoked"}` — the request is fine; the deployment is sick. Must NOT classify
+// as a provider bad-request: exhausting on it would render a client-blaming
+// 400 invalid_request_error for what is capacity/health, not request shape.
+export function isProviderDegradedError(err: any): boolean {
+  const msg = (err?.message ?? '').toLowerCase();
+  return msg.includes('degraded');
+}
+
 // Provider-side 400s are retryable because another provider may accept the same
 // request shape. If every routed provider rejects it, however, the client should
 // see an invalid-request error rather than a misleading rate-limit exhaustion.
 export function isProviderBadRequestError(err: any): boolean {
+  if (isProviderDegradedError(err)) return false;
   const status = typeof err?.status === 'number' ? err.status : 0;
   const msg = (err?.message ?? '').toLowerCase();
   if (status === 400) return msg.includes('api error 400');
