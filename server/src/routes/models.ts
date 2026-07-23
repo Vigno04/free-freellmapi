@@ -27,13 +27,12 @@ const modelUpdateSchema = z.object({
   monthlyTokenBudget: z.string().max(80).optional(),
   contextWindow: z.number().int().positive().nullable().optional(),
   enabled: z.boolean().optional(),
-  supportsVision: z.boolean().optional(),
-  supportsTools: z.boolean().optional(),
+  modalities: z.array(z.string()).optional(),
   
   fallbackEnabled: z.boolean().optional(),
 }).strict();
 
-const MODEL_FIELD_COLUMNS: Record<keyof ModelOverridePatch | 'enabled', string> = {
+const MODEL_FIELD_COLUMNS = {
   displayName: 'display_name',
   intelligenceRank: 'intelligence_rank',
   speedRank: 'speed_rank',
@@ -44,8 +43,6 @@ const MODEL_FIELD_COLUMNS: Record<keyof ModelOverridePatch | 'enabled', string> 
   tpdLimit: 'tpd_limit',
   monthlyTokenBudget: 'monthly_token_budget',
   contextWindow: 'context_window',
-  supportsVision: 'supports_vision',
-  supportsTools: 'supports_tools',
   modalities: 'modalities',
   enabled: 'enabled',
 };
@@ -57,8 +54,12 @@ type ModelRow = {
   key_id: number | null;
 };
 
-function dbValue(key: keyof typeof MODEL_FIELD_COLUMNS, value: unknown): unknown {
-  if (key === 'enabled' || key === 'supportsVision' || key === 'supportsTools') return value ? 1 : 0;
+function dbValue(key: keyof typeof MODEL_FIELD_COLUMNS, value: any): unknown {
+  if (value === undefined) return null;
+  if (key === 'modalities') {
+    return value == null ? null : JSON.stringify(value);
+  }
+  if (key === 'enabled') return value ? 1 : 0;
   return value;
 }
 
@@ -135,7 +136,7 @@ modelsRouter.patch('/:id', (req: Request, res: Response) => {
         for (const key of [
           'displayName', 'intelligenceRank', 'speedRank', 'sizeLabel',
           'rpmLimit', 'rpdLimit', 'tpmLimit', 'tpdLimit',
-          'monthlyTokenBudget', 'contextWindow', 'supportsVision', 'supportsTools',
+          'monthlyTokenBudget', 'contextWindow', 'modalities',
         ] as const) {
           if (Object.prototype.hasOwnProperty.call(modelPatch, key)) {
             overridePatch[key] = modelPatch[key] as never;

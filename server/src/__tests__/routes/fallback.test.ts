@@ -61,6 +61,7 @@ describe('Fallback API', () => {
     // contextWindow powers the dashboard catalog filter (#343); present even when
     // the catalog has no value for a model (null).
     expect(first).toHaveProperty('contextWindow');
+    expect(first).toHaveProperty('modalities');
   });
 
   it('GET /api/fallback/token-usage reports per-model chat usage for configured platforms', async () => {

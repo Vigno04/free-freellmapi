@@ -49,9 +49,9 @@ function addSyntheticModel(modelId: string, priority: number, enabled = true): n
     INSERT INTO models (
       platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
       rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget,
-      context_window, enabled, supports_vision, supports_tools
+      context_window, enabled, modalities
     )
-    VALUES ('groq', ?, ?, ?, ?, 'Small', NULL, NULL, NULL, NULL, '~1M', 128000, 1, 0, 1)
+    VALUES ('groq', ?, ?, ?, ?, 'Small', NULL, NULL, NULL, NULL, '~1M', 128000, 1, '["tools"]')
   `).run(modelId, `Routing Test ${modelId}`, priority, priority);
   const id = Number(inserted.lastInsertRowid);
   db.prepare('INSERT INTO fallback_config (model_db_id, priority, enabled) VALUES (?, ?, ?)').run(id, priority, enabled ? 1 : 0);

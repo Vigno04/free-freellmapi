@@ -46,15 +46,15 @@ export function buildModelListing(): ModelListing {
   if (isUnifyEnabled()) {
     // Unify ON: one entry per logical model group. Pull per-row availability +
     // context keyed by db id, then aggregate over each group's members.
-    type AvailRow = { id: number; platform: string; intelligence_rank: number; context_window: number | null; enabled: number; available: number; supports_tools: number };
+    type AvailRow = { id: number; platform: string; intelligence_rank: number; context_window: number | null; enabled: number; available: number; modalities: string };
     const rows = db.prepare(`
-      SELECT m.id, m.platform, m.intelligence_rank, m.context_window, m.supports_tools,
+      SELECT m.id, m.platform, m.intelligence_rank, m.context_window, m.modalities,
              m.enabled AS enabled, ${availableExpr} AS available
       FROM models m
     `).all() as AvailRow[];
     const byId = new Map(rows.map(r => [r.id, r]));
     allListed = getModelGroups().map(g => {
-      const infos = g.members.map(m => byId.get(m.model_db_id)).filter(Boolean) as AvailRow[];
+      const infos = g.members.map(m => byId.get(m.model_db_id)).filter(r => r != null) as AvailRow[];
       const ctxs = infos.map(i => i.context_window).filter((c): c is number => c != null);
       return {
         id: g.canonicalId,
@@ -65,16 +65,16 @@ export function buildModelListing(): ModelListing {
         contextWindow: ctxs.length ? Math.max(...ctxs) : null,
         intel: infos.length ? Math.min(...infos.map(i => i.intelligence_rank)) : Number.MAX_SAFE_INTEGER,
         platforms: [...new Set(infos.map(i => i.platform))],
-        supportsTools: infos.some(i => i.supports_tools === 1),
+        supportsTools: infos.some(i => i.modalities?.includes('tools')),
       };
     });
   } else {
     // Unify OFF: one entry per model_id (dedup picks the available, smartest
     // representative row).
     const models = db.prepare(`
-      SELECT platform, model_id, display_name, context_window, enabled, available, intelligence_rank, id, supports_tools
+      SELECT platform, model_id, display_name, context_window, enabled, available, intelligence_rank, id, modalities
       FROM (
-        SELECT m.platform, m.model_id, m.display_name, m.context_window, m.intelligence_rank, m.id, m.supports_tools,
+        SELECT m.platform, m.model_id, m.display_name, m.context_window, m.intelligence_rank, m.id, m.modalities,
                m.enabled AS enabled,
                ${availableExpr} AS available,
                ROW_NUMBER() OVER (
@@ -84,13 +84,13 @@ export function buildModelListing(): ModelListing {
         FROM models m
       )
       WHERE rn = 1
-    `).all() as (ModelListRow & { intelligence_rank: number; id: number; supports_tools: number })[];
+    `).all() as (ModelListRow & { intelligence_rank: number; id: number; modalities: string })[];
     allListed = models.map(m => ({
       id: m.model_id, name: m.display_name, ownedBy: m.platform,
       available: m.available, enabled: m.enabled, contextWindow: m.context_window,
       intel: m.intelligence_rank,
       platforms: [m.platform],
-      supportsTools: m.supports_tools === 1,
+      supportsTools: m.modalities?.includes('tools') || false,
     }));
   }
 

@@ -240,17 +240,17 @@ export function applyCatalog(db: Db, catalog: Catalog): NonNullable<SyncResult['
       display_name = @displayName, intelligence_rank = @intelligenceRank, speed_rank = @speedRank,
       size_label = @sizeLabel, rpm_limit = @rpm, rpd_limit = @rpd, tpm_limit = @tpm, tpd_limit = @tpd,
       monthly_token_budget = @monthlyTokenBudget, context_window = @contextWindow,
-      supports_vision = @supportsVision, supports_tools = @supportsTools,
+      modalities = @modalities,
       enabled = @enabled
     WHERE id = @id
   `);
   const insertModel = db.prepare(`
     INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
                         rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget, context_window,
-                        enabled, supports_vision, supports_tools)
+                        enabled, modalities)
     VALUES (@platform, @modelId, @displayName, @intelligenceRank, @speedRank, @sizeLabel,
             @rpm, @rpd, @tpm, @tpd, @monthlyTokenBudget, @contextWindow,
-            @enabled, @supportsVision, @supportsTools)
+            @enabled, @modalities)
   `);
 
   // Generative-media models go to their own table (never the chat router's pool).
@@ -339,8 +339,11 @@ export function applyCatalog(db: Db, catalog: Catalog): NonNullable<SyncResult['
         tpd: m.limits.tpd,
         monthlyTokenBudget: m.monthlyTokenBudget,
         contextWindow: routableContextWindow(m.platform, m.modelId, m.contextWindow),
-        supportsVision: m.supportsVision ? 1 : 0,
-        supportsTools: m.supportsTools ? 1 : 0,
+        modalities: JSON.stringify([
+          'text',
+          ...m.supportsVision ? ['vision'] : [],
+          ...m.supportsTools ? ['tools'] : [],
+        ]),
       };
       if (row) {
         // Catalog disable wins (dead upstream); local disable also wins.

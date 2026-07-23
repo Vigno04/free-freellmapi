@@ -841,22 +841,22 @@ export function resolveModelGroupCandidates(memberDbIds: number[]): ChainRow[] {
   if (strategy !== 'priority') refreshStatsCache(db);
 
   const selectMember = db.prepare(`
-    SELECT m.id as model_db_id, COALESCE(fc.priority, 0) as priority,
-           COALESCE(fc.enabled, 1) as enabled,
+    SELECT m.id as model_db_id, COALESCE(pm.priority, 0) as priority,
+           1 as enabled,
            m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
            m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
            m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM models m
     LEFT JOIN base_models bm ON m.base_model_id = bm.id
-    LEFT JOIN fallback_config fc ON fc.model_db_id = m.id
+    LEFT JOIN profile_models pm ON pm.model_db_id = m.id AND pm.profile_id = ?
     WHERE m.id = ? AND m.enabled = 1
   `);
 
   const rows: ChainRow[] = [];
   for (const id of memberDbIds) {
     const activeProfileId = getActiveProfileId(db);
-    const row = (activeProfileId == null ? selectMember.get(id) : selectMember.get(activeProfileId, id)) as ChainRow | undefined;
+    const row = selectMember.get(activeProfileId || 1, id) as ChainRow | undefined;
     if (row) rows.push(row);
   }
   return orderChain(rows, strategy);

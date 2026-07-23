@@ -10,10 +10,11 @@ function makeDb(): Database.Database {
     CREATE TABLE models (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       platform TEXT NOT NULL,
-      model_id TEXT NOT NULL INTEGER NOT NULL DEFAULT 0
+      model_id TEXT NOT NULL,
+      supports_tools INTEGER NOT NULL DEFAULT 0
     );
   `);
-  const insert = db.prepare('INSERT INTO models (platform, model_id) VALUES (?, ?, ?)');
+  const insert = db.prepare('INSERT INTO models (platform, model_id, supports_tools) VALUES (?, ?, ?)');
   insert.run('custom', 'qwen3:4b', 0);          // the stuck-at-zero case (#470)
   insert.run('custom', 'llama3:8b', 1);          // already tool-capable
   insert.run('groq', 'llama-3.3-70b', 0);        // a catalog row that must NOT change
@@ -21,8 +22,8 @@ function makeDb(): Database.Database {
 }
 
 function toolsByModel(db: Database.Database): Record<string, number> {
-  const rows = db.prepare('SELECT model_id FROM models').all() as { model_id: string;  }[];
-  return Object.fromEntries(rows.map(r => [r.model_id]));
+  const rows = db.prepare('SELECT model_id, supports_tools FROM models').all() as { model_id: string; supports_tools: number }[];
+  return Object.fromEntries(rows.map(r => [r.model_id, r.supports_tools]));
 }
 
 const dbs: Database.Database[] = [];

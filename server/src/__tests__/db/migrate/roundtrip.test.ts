@@ -70,6 +70,9 @@ describe('migration round trip', () => {
         REQUEST_CLIENT_INFO_FILENAME,
         CUSTOM_MODEL_TOOL_SUPPORT_FILENAME,
         BASE_MODELS_ENTITY_FILENAME,
+        '20260714_000001_profile_chain_backfill.ts',
+        '20260715_000000_model_modalities.ts',
+        '20260720_000001_key_health_error.ts',
       ]);
     } finally {
       db.close();
@@ -93,7 +96,7 @@ describe('migration round trip', () => {
       const bmId = (db.prepare(`SELECT last_insert_rowid() as id`).get() as any).id;
       db.prepare(`
         INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, modalities, enabled, base_model_id)
-        VALUES ('custom', 'roundtrip-custom', 'Roundtrip Custom', 50, 50, 1, 0, 1, ?)
+        VALUES ('custom', 'roundtrip-custom', 'Roundtrip Custom', 50, 50, '["text","tools"]', 1, ?)
       `).run(bmId);
 
       const fullState = snapshotAppState(db);

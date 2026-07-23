@@ -307,11 +307,10 @@ describe('Rate Limiter', () => {
         INSERT INTO models (
           platform, model_id, display_name, intelligence_rank, speed_rank,
           size_label, rpm_limit, rpd_limit, tpm_limit, tpd_limit,
-          monthly_token_budget, context_window, enabled, supports_vision,
-          supports_tools
+          monthly_token_budget, context_window, enabled, modalities
         ) VALUES (
           'navy', ?, ?, 1, 1, 'Large', 20, NULL, NULL, ?,
-          ?, NULL, 1, 0, 1
+          ?, NULL, 1, '["tools"]'
         )
         ON CONFLICT(platform, model_id) DO UPDATE SET
           tpd_limit = excluded.tpd_limit,

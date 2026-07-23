@@ -23,7 +23,8 @@ function baseModel(over: Partial<AnyCatalog['models'][number]> = {}): AnyCatalog
     monthlyTokenBudget: '~1M',
     contextWindow: 8192,
     enabled: true,
-    modalities: ['text', 'tools'],
+    supportsVision: false,
+    supportsTools: true,
     ...over,
   };
 }
@@ -207,10 +208,10 @@ describe('applyCatalog', () => {
     applyCatalog(getDb(), catalogOf(refreshed));
 
     const row = getDb().prepare(`
-      SELECT display_name, context_window, supports_tools
-        FROM models
-       WHERE platform = 'groq' AND model_id = 'override-model'
-    `).get() as { display_name: string; context_window: number; supports_tools: number };
+      SELECT display_name, context_window, modalities
+         FROM models
+        WHERE platform = 'groq' AND model_id = 'override-model'
+    `).get() as { display_name: string; context_window: number; modalities: string };
     expect(row).toEqual({ display_name: 'Local Name', context_window: 12345, modalities: '["text","tools"]' });
   });
 

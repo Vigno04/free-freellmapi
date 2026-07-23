@@ -51,7 +51,7 @@ describe('Model management API', () => {
     expect(body.success).toBe(true);
 
     const row = getDb().prepare(`
-      SELECT m.display_name, m.context_window, fc.enabled AS fallback_enabled
+      SELECT m.display_name, m.modalities, m.context_window, fc.enabled AS fallback_enabled
         FROM models m
         JOIN fallback_config fc ON fc.model_db_id = m.id
        WHERE m.id = ?
@@ -94,7 +94,7 @@ describe('Model management API', () => {
 
     const row = getDb().prepare('SELECT modalities FROM models WHERE id = ?')
       .get(modelDbId) as {   };
-    expect(row).toEqual({ modalities: '["text","vision"]', modalities: '["text"]' });
+    expect(row).toEqual({ modalities: '["text","vision"]' });
 
     const override = getDb().prepare("SELECT 1 FROM model_overrides WHERE platform = 'custom' AND model_id = 'cap-edit-model'").get();
     expect(override).toBeUndefined();

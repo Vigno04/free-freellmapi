@@ -89,6 +89,7 @@ describe('requested_model analytics logging', () => {
       model: groqModelId,
       messages: [{ role: 'user', content: 'hi' }],
     }, authHeaders());
+    if (status !== 200) console.error('500 ERROR:', body);
     expect(status).toBe(200);
     // Provider metadata is not forwarded blindly: Reka returns "default" for
     // concrete models, and any compatible provider may do the same (#568).

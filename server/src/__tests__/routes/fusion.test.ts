@@ -142,9 +142,9 @@ describe('fusion route (/v1/chat/completions, model: "fusion")', () => {
     groqModel = pick('groq');
     cerebrasModel = pick('cerebras');
     openrouterModel = pick('openrouter');
-    toolGroqModel = pick('groq', 'AND m.modalities LIKE '%\"tools\"%'');
-    toolCerebrasModel = pick('cerebras', 'AND m.modalities LIKE '%\"tools\"%'');
-    nonToolOpenrouterModel = pick('openrouter', 'AND m.modalities NOT LIKE '%\"tools\"%'');
+    toolGroqModel = pick('groq', `AND m.modalities LIKE '%"tools"%'`);
+    toolCerebrasModel = pick('cerebras', `AND m.modalities LIKE '%"tools"%'`);
+    nonToolOpenrouterModel = pick('openrouter', `AND m.modalities NOT LIKE '%"tools"%'`);
   });
 
   beforeEach(async () => {

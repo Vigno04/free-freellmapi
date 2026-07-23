@@ -497,13 +497,23 @@ keysRouter.post('/custom', async (req: Request, res: Response) => {
 
     const registered: { modelDbId: number; model: string; displayName: string; supportsTools?: boolean; supportsVision?: boolean }[] = [];
     for (const { modelId, displayName, supportsTools, supportsVision } of entries) {
+      const existingRow = db.prepare("SELECT modalities FROM models WHERE platform = 'custom' AND model_id = ?")
+        .get(modelId) as { modalities: string } | undefined;
+      
+      let finalTools = supportsTools;
+      let finalVision = supportsVision;
+      if (existingRow) {
+        if (finalTools === undefined) finalTools = existingRow.modalities.includes('tools');
+        if (finalVision === undefined) finalVision = existingRow.modalities.includes('vision');
+      }
+
       // Register each model bound to THIS endpoint's key. Custom models carry no
       // rate limits and sort last in the intelligence preset (size_label tier).
       // Re-registering an existing model id re-binds it (model ids are unique
       // per platform, so one id can't live on two endpoints at once).
       const modArray = ['text'];
-      if (supportsVision) modArray.push('vision');
-      if (supportsTools !== false) modArray.push('tools');
+      if (finalVision) modArray.push('vision');
+      if (finalTools !== false) modArray.push('tools');
       const modalitiesStr = JSON.stringify(modArray);
       
       db.prepare(`

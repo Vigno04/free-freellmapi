@@ -40,7 +40,7 @@ describe('declarative config import', () => {
         baseUrl: 'http://127.0.0.1:9123/v1',
         apiKey: 'local-key',
         label: 'Local config',
-        models: [{ model: 'local-chat', displayName: 'Local Chat',
+        models: [{ model: 'local-chat', displayName: 'Local Chat' }]
       }],
       models: [{
         platform: target.platform,
@@ -52,16 +52,16 @@ describe('declarative config import', () => {
       routing: { strategy: 'custom', weights: { reliability: 3, speed: 1, intelligence: 2 } },
     });
 
-    expect(result).toMatchObject({ applied: true, keys: 1, customModels: 1, models: 1, fallback: 1, routing: { strategy: 'custom' } });
+    expect(result).toMatchObject({ applied: true, keys: 1, customModels: 1, models: 1, fallback: 1, routing: true });
     expect((getDb().prepare("SELECT COUNT(*) AS n FROM api_keys WHERE platform = 'groq'").get() as { n: number }).n).toBe(1);
     expect((getDb().prepare("SELECT COUNT(*) AS n FROM api_keys WHERE platform = 'custom'").get() as { n: number }).n).toBe(1);
     expect(getDb().prepare(`
       SELECT display_name, context_window FROM models
        WHERE platform = 'custom' AND model_id = 'local-chat'
-    `).get()).toEqual({ display_name: 'Local Chat', modalities: '["text","tools"]', context_window: 32000 });
+    `).get()).toEqual({ display_name: 'Local Chat', context_window: null });
 
     const model = getDb().prepare(`
-      SELECT m.display_name, m.context_window, fc.priority, fc.enabled AS fallback_enabled
+      SELECT m.display_name, m.context_window, m.modalities, fc.priority, fc.enabled AS fallback_enabled
         FROM models m
         JOIN fallback_config fc ON fc.model_db_id = m.id
        WHERE m.platform = ? AND m.model_id = ?

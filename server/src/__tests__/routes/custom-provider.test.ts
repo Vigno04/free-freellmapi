@@ -381,7 +381,7 @@ describe('Custom Provider Endpoints', () => {
         model: 'defaults-model',
       });
       expect(status).toBe(201);
-      expect(toolsVision('defaults-model')).toEqual({ modalities: '["text","tools"]', modalities: '["text"]' });
+      expect(toolsVision('defaults-model')).toEqual({ modalities: '["text","tools"]' });
       // Echoed back to the client so the UI can render the capability badges.
       expect(body.supportsTools).toBe(true);
       expect(body.supportsVision).toBe(false);
@@ -391,31 +391,33 @@ describe('Custom Provider Endpoints', () => {
       const { status } = await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5002/v1',
         model: 'vision-no-tools',
-        modalities: JSON.stringify(['text', 'vision', 'tools']),
+        supportsVision: true,
+        supportsTools: false,
       });
       expect(status).toBe(201);
-      expect(toolsVision('vision-no-tools')).toEqual({ modalities: '["text"]', modalities: '["text","vision"]' });
+      expect(toolsVision('vision-no-tools')).toEqual({ modalities: '["text","vision"]' });
     });
 
     it('honors per-entry flags in the models array and per-model defaults', async () => {
       const { status } = await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5003/v1',
         models: [
-          { model: 'entry-vision', modalities: JSON.stringify(['text', 'vision', 'tools']),
+          { model: 'entry-vision', supportsVision: true, supportsTools: false },
           'entry-default',
         ],
       });
       expect(status).toBe(201);
-      expect(toolsVision('entry-vision')).toEqual({ modalities: '["text","tools"]', modalities: '["text","vision"]' });
-      expect(toolsVision('entry-default')).toEqual({ modalities: '["text","tools"]', modalities: '["text"]' });
+      expect(toolsVision('entry-vision')).toEqual({ modalities: '["text","vision"]' });
+      expect(toolsVision('entry-default')).toEqual({ modalities: '["text","tools"]' });
     });
 
     it('preserves a stored capability when re-registration omits the flag', async () => {
       await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5004/v1',
         model: 'preserve-model',
+        supportsTools: false,
       });
-      expect(toolsVision('preserve-model')).toEqual({ modalities: '["text"]', modalities: '["text"]' });
+      expect(toolsVision('preserve-model')).toEqual({ modalities: '["text"]' });
 
       // Re-submit the same endpoint/model without capability flags — the earlier
       // tools = 0 the user chose must survive, not snap back to the default.
@@ -425,13 +427,14 @@ describe('Custom Provider Endpoints', () => {
         displayName: 'Renamed',
       });
       expect(status).toBe(201);
-      expect(toolsVision('preserve-model')).toEqual({ modalities: '["text"]', modalities: '["text"]' });
+      expect(toolsVision('preserve-model')).toEqual({ modalities: '["text"]' });
     });
 
     it('rejects a non-boolean capability flag', async () => {
       const { status } = await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5005/v1',
         model: 'bad-flag',
+        supportsTools: 'yes' as any,
       });
       expect(status).toBe(400);
     });

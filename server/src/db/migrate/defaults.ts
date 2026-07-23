@@ -7,8 +7,9 @@ import * as githubGpt41Context from '../migrations/20260630_000001_github_gpt41_
 import * as requestClientInfo from '../migrations/20260706_000001_request_client_info.js';
 import * as customModelToolSupport from '../migrations/20260706_000002_custom_model_tool_support.js';
 import * as baseModelsEntity from '../migrations/20260714_000000_base_models_entity.js';
-
+import * as profileChainBackfill from '../migrations/20260714_000001_profile_chain_backfill.js';
 import * as modelModalities from '../migrations/20260715_000000_model_modalities.js';
+import * as keyHealthError from '../migrations/20260720_000001_key_health_error.js';
 
 export interface MigrationModule {
   up(db: Db): void;
@@ -28,7 +29,9 @@ export const GITHUB_GPT41_CONTEXT_FILENAME = '20260630_000001_github_gpt41_conte
 export const REQUEST_CLIENT_INFO_FILENAME = '20260706_000001_request_client_info.ts';
 export const CUSTOM_MODEL_TOOL_SUPPORT_FILENAME = '20260706_000002_custom_model_tool_support.ts';
 export const BASE_MODELS_ENTITY_FILENAME = '20260714_000000_base_models_entity.ts';
+export const PROFILE_CHAIN_BACKFILL_FILENAME = '20260714_000001_profile_chain_backfill.ts';
 export const MODEL_MODALITIES_FILENAME = '20260715_000000_model_modalities.ts';
+export const KEY_HEALTH_ERROR_FILENAME = '20260720_000001_key_health_error.ts';
 
 export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: LEGACY_BASELINE_FILENAME, module: legacyBaseline },
@@ -39,5 +42,7 @@ export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: REQUEST_CLIENT_INFO_FILENAME, module: requestClientInfo },
   { filename: CUSTOM_MODEL_TOOL_SUPPORT_FILENAME, module: customModelToolSupport },
   { filename: BASE_MODELS_ENTITY_FILENAME, module: baseModelsEntity },
+  { filename: PROFILE_CHAIN_BACKFILL_FILENAME, module: profileChainBackfill },
   { filename: MODEL_MODALITIES_FILENAME, module: modelModalities },
+  { filename: KEY_HEALTH_ERROR_FILENAME, module: keyHealthError },
 ];

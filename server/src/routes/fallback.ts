@@ -118,7 +118,7 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
            m.platform, m.model_id, m.display_name, m.intelligence_rank,
            m.speed_rank, m.size_label, m.rpm_limit, m.rpd_limit,
            m.tpm_limit, m.tpd_limit, m.context_window,
-           m.monthly_token_budget, m.supports_vision, m.supports_tools,
+           m.monthly_token_budget, m.modalities,
            m.key_id, ak.label AS key_label,
            mo.overrides_json IS NOT NULL AS has_overrides
     FROM profile_models pm
@@ -217,8 +217,7 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
       // budget-label parsing; 0 for rate-limited/placeholder labels. See lib/budget.ts.
       // Scaled by healthy/enabled key count for multi-account pooled capacity.
       monthlyTokenBudgetTokens: estimatedTokens * Math.max(1, keyCountMap.get(r.platform) ?? 1),
-      supportsVision: r.supports_vision === 1,
-      
+      modalities: JSON.parse(r.modalities || '[]'),
       source: r.platform === 'custom' || r.key_id != null ? 'custom' : 'catalog',
       keyId: r.key_id ?? null,
       keyLabel: r.key_label ?? null,

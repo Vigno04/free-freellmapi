@@ -249,8 +249,8 @@ describe('Migration idempotency', () => {
                'cognitivecomputations/dolphin-mistral-24b-venice-edition:free'))
           OR (platform = 'zhipu' AND model_id = 'glm-4.6v-flash')
        ORDER BY platform, model_id
-    `).all() as { model_id: string; enabled: number;   }[];
-    expect(added.map(r => [r.model_id, r.enabled, r.r.supports_tools])).toEqual([
+    `).all() as { model_id: string; enabled: number; modalities: string }[];
+    expect(added.map(r => [r.model_id, r.enabled, r.modalities.includes('vision') ? 1 : 0, r.modalities.includes('tools') ? 1 : 0])).toEqual([
       ['cognitivecomputations/dolphin-mistral-24b-venice-edition:free', 1, 0, 0],
       ['meta-llama/llama-3.2-3b-instruct:free',                         1, 0, 0],
       ['moonshotai/kimi-k2.6:free',                                     1, 0, 1],
@@ -272,8 +272,8 @@ describe('Migration idempotency', () => {
     expect(zen.map(r => [r.model_id, r.enabled])).toEqual([
       // minimax-m3-free was seeded enabled here in V24, then retired in V25 when
       // its free promo ended (now enabled=0). nemotron-3-ultra-free is still live.
-      ['minimax-m3-free',       0, 1],
-      ['nemotron-3-ultra-free', 1, 1],
+      ['minimax-m3-free',       0],
+      ['nemotron-3-ultra-free', 1],
     ]);
 
     // The hung NIM gemma route is paused (row kept, enabled=0, re-asserted

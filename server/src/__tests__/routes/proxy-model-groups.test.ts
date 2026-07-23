@@ -35,10 +35,11 @@ function addModel(platform: string, modelId: string, displayName: string, priori
   const info = db.prepare(`
     INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
                         rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget, context_window, enabled)
-    VALUES (?, ?, ?, 5, 5, 'Large', 100, NULL, NULL, NULL, '~10M', 131072, 1, 0)
+    VALUES (?, ?, ?, 5, 5, 'Large', 100, NULL, NULL, NULL, '~10M', 131072, 1)
   `).run(platform, modelId, displayName);
   const id = Number(info.lastInsertRowid);
   db.prepare('INSERT INTO fallback_config (model_db_id, priority, enabled) VALUES (?, ?, 1)').run(id, priority);
+  db.prepare("INSERT INTO profile_models (profile_id, model_db_id, priority, enabled) VALUES (COALESCE((SELECT CAST(value AS INTEGER) FROM settings WHERE key = 'active_profile_id'), 1), ?, ?, 1)").run(id, priority);
   return id;
 }
 
@@ -130,7 +131,7 @@ describe('Model unification (group the same model across providers)', () => {
     const groqId = db.prepare("SELECT id FROM models WHERE model_id = 'tum-groq'").get() as { id: number };
     const cerebrasId = db.prepare("SELECT id FROM models WHERE model_id = 'tum-cerebras'").get() as { id: number };
     const setPriority = (modelDbId: number, p: number) =>
-      db.prepare('UPDATE fallback_config SET priority = ? WHERE model_db_id = ?').run(p, modelDbId);
+      db.prepare('UPDATE profile_models SET priority = ? WHERE model_db_id = ?').run(p, modelDbId);
     // Both providers stay healthy throughout, so the only thing that can move the
     // route between turns is stickiness — never a cooldown.
     vi.spyOn(global, 'fetch').mockImplementation(async (url: any, init?: any) => {

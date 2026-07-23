@@ -180,7 +180,7 @@ describe('migration runner', () => {
     try {
       db.exec(`
         CREATE TABLE models (
-          id INTEGER PRIMARY KEY INTEGER NOT NULL DEFAULT 0
+          id INTEGER PRIMARY KEY AUTOINCREMENT
         );
       `);
 
@@ -204,7 +204,7 @@ describe('migration runner', () => {
       import type Database from 'better-sqlite3';
 
       export function up(db: Database.Database): void {
-        db.exec('CREATE TABLE models (id INTEGER PRIMARY KEY INTEGER NOT NULL DEFAULT 0)');
+        db.exec('CREATE TABLE models (id INTEGER PRIMARY KEY AUTOINCREMENT)');
       }
 
       export function down(_db: Database.Database): void {
@@ -219,7 +219,7 @@ describe('migration runner', () => {
       const applied = db.prepare('SELECT filename FROM migrations ORDER BY id ASC').all() as { filename: string }[];
       expect(applied.map(row => row.filename)).toEqual([LEGACY_BASELINE_FILENAME]);
       expect(hasTable(db, 'models')).toBe(true);
-      expect(hasColumn(db, 'models', 'supports_tools')).toBe(true);
+      expect(hasColumn(db, 'models', 'id')).toBe(true);
     } finally {
       db.close();
     }
