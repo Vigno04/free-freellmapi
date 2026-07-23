@@ -34,7 +34,7 @@ Your router updates its own model catalog at a chosen interval.
 - [Features](#features)
 - [Not yet supported](#not-yet-supported)
 - [Quick start](#quick-start)
-- [Works with OB-1 and other clients](#works-with-ob-1-and-other-clients)
+- [Works with OpenAI-compatible clients](#works-with-openai-compatible-clients)
 - [Docker](#docker)
 - [Desktop app](#desktop-app)
 - [Languages](#languages)
@@ -44,6 +44,8 @@ Your router updates its own model catalog at a chosen interval.
 - [How it works](#how-it-works)
 - [Context Handoff](#context-handoff)
 - [Limitations](#limitations)
+- [Documentation index](docs/README.md)
+- [Contributor guide](CONTRIBUTING.md)
 - [Contributing](#contributing)
 - [Terms of Service review](#terms-of-service-review)
 - [Disclaimer](#disclaimer)
@@ -52,7 +54,7 @@ Your router updates its own model catalog at a chosen interval.
 
 Every serious AI lab now offers a free tier — a few million tokens a month, a few thousand requests a day. On its own each tier is a toy. Stacked together, they add up to more than **1.7 billion tokens per month** of working inference capacity, across 160+ models from small-and-fast to reasonably capable.
 
-The problem is that stacking them by hand is painful: twenty-one different SDKs, twenty-one different rate limits, twenty-one places a request can fail. FreeLLMAPI collapses that into one OpenAI-compatible endpoint. Point any OpenAI client library at your local server, and it routes transparently across whichever providers you've added keys for.
+The problem is that stacking them by hand is painful: twenty-eight different SDKs, twenty-eight different rate limits, twenty-eight places a request can fail. FreeLLMAPI collapses that into one OpenAI-compatible endpoint. Point any OpenAI client library at your local server, and it routes transparently across whichever providers you've added keys for.
 
 And the free-tier landscape shifts weekly: providers launch models, retire them, and change quotas without notice.
 So that is why this automatically pulls new list at minimum every 12hr
@@ -106,6 +108,8 @@ Prefer to read before you pipe to bash? [The script is here](https://freellmapi.
 
 On Windows, the easiest path is the desktop **[`.exe` installer from Releases](https://github.com/Vigno04/free-freellmapi/releases/latest)** (below); the Docker steps work in WSL or any bash shell.
 
+On Android, see the experimental [Termux installation guide](docs/install/android-termux.md). It uses Node's built-in SQLite driver and does not require the Android NDK.
+
 **Or manually with Docker Compose.** It runs the API and dashboard together on port 3001 and persists SQLite in a named volume.
 
 **Prerequisites:** Docker, Docker Compose, OpenSSL.
@@ -136,7 +140,7 @@ docker compose up -d
 
 Open http://localhost:3001, add your provider keys on the **Keys** page, reorder the **Fallback Chain** to taste, and grab your unified API key from the **Keys** page header. That unified key is what you point your OpenAI SDK at.
 
-Your fresh install ships with the free catalog snapshot (82 models today) and keeps itself updated from there. Everything the live feed adds on top is listed at [freellmapi.co/models](https://freellmapi.co/models.html).
+Your install keeps itself updated from the signed catalog feed. The current full catalog is listed at [freellmapi.co/models](https://freellmapi.co/models.html).
 
 > **Reaching it from another machine?** By default the container is published only on `127.0.0.1`, so `http://<server-ip>:3001` won't load from another device (the page just hangs). To expose it on your LAN — e.g. a Raspberry Pi at `http://192.168.1.x:3001` — start it with `HOST_BIND=0.0.0.0`:
 >
@@ -342,17 +346,10 @@ flat JSON files. To add a language, copy `en.json`, translate the values, and
 register the locale in `client/src/i18n/I18nProvider.tsx` (and
 `desktop/src/i18n.ts` for the tray strings) — PRs welcome.
 
-## Works with OB-1 and other clients
+## Works with OpenAI-compatible clients
 
-FreeLLMAPI is the free tier for **[OB-1](https://github.com/Overbrilliant/ob-1)**:
-the OB-1 CLI can clone, configure, start, health-check, and wire this proxy into
-its settings automatically. A new OB-1 user can pick **Start free** and reach a
-working OpenAI-compatible endpoint before creating any hosted account.
+Any client that can target an OpenAI-compatible base URL can use FreeLLMAPI:
 
-It is also useful on its own. Any client that can target an OpenAI-compatible
-base URL can use FreeLLMAPI:
-
-- **OB-1**: managed automatically by the CLI, including anonymous providers.
 - **LangChain, LlamaIndex, official OpenAI SDKs**: set `base_url` to
   `http://localhost:3001/v1` and use the unified key from the dashboard.
 - **Local GPU boxes**: add custom OpenAI-compatible endpoints for Ollama,
@@ -771,6 +768,11 @@ See [CONTRIBUTING.md](./CONTRIBUTING.md) for the full migration CLI and workflow
 <a href="https://github.com/RobinHoodO"><img src="https://images.weserv.nl/?url=github.com/RobinHoodO.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@RobinHoodO" /></a>
 <a href="https://github.com/hmm183"><img src="https://images.weserv.nl/?url=github.com/hmm183.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@hmm183" /></a>
 <a href="https://github.com/duemilionidieuro-bot"><img src="https://images.weserv.nl/?url=github.com/duemilionidieuro-bot.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@duemilionidieuro-bot" /></a>
+<a href="https://github.com/cagedbird043"><img src="https://images.weserv.nl/?url=github.com/cagedbird043.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@cagedbird043" /></a>
+<a href="https://github.com/jasnoorgill"><img src="https://images.weserv.nl/?url=github.com/jasnoorgill.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@jasnoorgill" /></a>
+<a href="https://github.com/Joey9024"><img src="https://images.weserv.nl/?url=github.com/Joey9024.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@Joey9024" /></a>
+<a href="https://github.com/AskingConical"><img src="https://images.weserv.nl/?url=github.com/AskingConical.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@AskingConical" /></a>
+<a href="https://github.com/ProAlit"><img src="https://images.weserv.nl/?url=github.com/ProAlit.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@ProAlit" /></a>
 <a href="https://github.com/hjhhoni"><img src="https://images.weserv.nl/?url=github.com/hjhhoni.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@hjhhoni" /></a>
 <a href="https://github.com/immanuelsavio"><img src="https://images.weserv.nl/?url=github.com/immanuelsavio.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@immanuelsavio" /></a>
 <a href="https://github.com/Slyker"><img src="https://images.weserv.nl/?url=github.com/Slyker.png&w=60&h=60&fit=cover&mask=circle" width="60" alt="@Slyker" /></a>

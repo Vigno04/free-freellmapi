@@ -15,6 +15,7 @@ export interface ModelOverridePatch {
   contextWindow?: number | null;
   supportsVision?: boolean;
   supportsTools?: boolean;
+  enabled?: boolean;
 }
 
 export type StoredOverrides = Partial<ModelOverridePatch> & {
@@ -36,6 +37,7 @@ const OVERRIDE_COLUMNS: Record<keyof ModelOverridePatch, string> = {
   contextWindow: 'context_window',
   supportsVision: 'supports_vision',
   supportsTools: 'supports_tools',
+  enabled: 'enabled',
 };
 
 function parseOverrides(raw: string | undefined): StoredOverrides {
@@ -50,7 +52,7 @@ function parseOverrides(raw: string | undefined): StoredOverrides {
 export { parseOverrides };
 
 function toDbValue(key: keyof ModelOverridePatch, value: unknown): unknown {
-  if (key === 'supportsVision' || key === 'supportsTools') return value ? 1 : 0;
+  if (key === 'supportsVision' || key === 'supportsTools' || key === 'enabled') return value ? 1 : 0;
   return value;
 }
 
@@ -143,7 +145,7 @@ export function applyModelOverrides(
   modelId: string,
 ): boolean {
   const overrides = getModelOverrides(db, platform, modelId);
-  const keys = Object.keys(overrides) as Array<keyof ModelOverridePatch>;
+  const keys = (Object.keys(overrides) as Array<keyof ModelOverridePatch>).filter(k => k in OVERRIDE_COLUMNS);
   if (keys.length === 0) return false;
 
   const assignments: string[] = [];

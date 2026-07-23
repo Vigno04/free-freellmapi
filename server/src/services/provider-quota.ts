@@ -124,7 +124,7 @@ function inferPoolForPlatform(platform: Platform, modelId?: string | null): stri
   if (platform === 'zhipu') return 'zhipu::account';
   if (platform === 'ollama') return 'ollama::cloud';
   if (platform === 'kilo') return 'kilo::anonymous';
-  if (platform === 'pollinations') return 'pollinations::anonymous';
+  if (platform === 'pollinations') return 'pollinations::account';
   if (platform === 'llm7') return 'llm7::anonymous';
   // AI Horde: anonymous requests share one queue priority (the 0000000000 key),
   // so they pool together; a registered key has its own kudos priority but we
@@ -138,7 +138,9 @@ function inferPoolForPlatform(platform: Platform, modelId?: string | null): stri
   if (platform === 'ainative') return 'ainative::account';
   if (platform === 'aion') return 'aion::free';
   if (platform === 'requesty') return 'requesty::free';
+  if (platform === 'navy') return 'navy::free';
   if (platform === 'nara') return 'nara::free';
+  if (platform === 'sealion') return 'sealion::free';
   return normalizedModelId ? `${platform}::${normalizedModelId}` : `${platform}::account`;
 }
 

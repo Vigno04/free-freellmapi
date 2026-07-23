@@ -28,6 +28,15 @@ function insertCall(createdAt: string, clientIp: string | null, clientUserAgent:
   `).run(status, createdAt, clientIp, clientUserAgent);
 }
 
+function recentUtcTimestamp(hour: number) {
+  const day = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const hh = String(hour).padStart(2, '0');
+  return {
+    sql: `${day} ${hh}:00:00`,
+    iso: `${day}T${hh}:00:00Z`,
+  };
+}
+
 describe('GET /api/analytics/requests', () => {
   let app: Express;
 
