@@ -56,8 +56,7 @@ interface ModelRow {
   monthly_token_budget: string;
   context_window: number | null;
   enabled: number;
-  supports_vision: number;
-  supports_tools: number;
+  modalities: string;
 }
 
 function main() {
@@ -76,7 +75,7 @@ function main() {
     .prepare(
       `SELECT platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
               rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget, context_window,
-              enabled, supports_vision, supports_tools
+              enabled, modalities
          FROM models
         ORDER BY intelligence_rank ASC, platform ASC, model_id ASC`,
     )
@@ -109,8 +108,8 @@ function main() {
     monthlyTokenBudget: m.monthly_token_budget,
     contextWindow: m.context_window,
     enabled: m.enabled === 1,
-    supportsVision: m.supports_vision === 1,
-    supportsTools: m.supports_tools === 1,
+    supportsVision: typeof m.modalities === 'string' ? m.modalities.includes('vision') : false,
+    
     quirks: quirksByModel.get(quirkKey(m.platform, m.model_id)) ?? [],
   }));
 

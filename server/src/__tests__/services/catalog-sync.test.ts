@@ -23,8 +23,7 @@ function baseModel(over: Partial<AnyCatalog['models'][number]> = {}): AnyCatalog
     monthlyTokenBudget: '~1M',
     contextWindow: 8192,
     enabled: true,
-    supportsVision: false,
-    supportsTools: true,
+    modalities: ['text', 'tools'],
     ...over,
   };
 }
@@ -45,7 +44,7 @@ function existingAsCatalogModels(): AnyCatalog['models'] {
     .prepare(
       `SELECT platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
               rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget, context_window,
-              enabled, supports_vision, supports_tools
+              enabled, modalities
          FROM models WHERE platform != 'custom' AND key_id IS NULL`,
     )
     .all() as Array<Record<string, unknown>>;
@@ -66,8 +65,7 @@ function existingAsCatalogModels(): AnyCatalog['models'] {
       monthlyTokenBudget: r.monthly_token_budget as string,
       contextWindow: r.context_window as number | null,
       enabled: (r.enabled as number) === 1,
-      supportsVision: (r.supports_vision as number) === 1,
-      supportsTools: (r.supports_tools as number) === 1,
+      modalities: JSON.stringify(['text', 'vision', 'tools']),
     }),
   );
 }
@@ -192,14 +190,12 @@ describe('applyCatalog', () => {
       modelId: 'override-model',
       displayName: 'Catalog Name',
       contextWindow: 1000,
-      supportsTools: false,
     }));
     applyCatalog(getDb(), catalogOf(models));
 
     upsertModelOverrides(getDb(), 'groq', 'override-model', {
       displayName: 'Local Name',
       contextWindow: 12345,
-      supportsTools: true,
     });
 
     const refreshed = existingAsCatalogModels().filter((m) => m.modelId !== 'override-model');
@@ -207,7 +203,6 @@ describe('applyCatalog', () => {
       modelId: 'override-model',
       displayName: 'Catalog Name v2',
       contextWindow: 2000,
-      supportsTools: false,
     }));
     applyCatalog(getDb(), catalogOf(refreshed));
 
@@ -216,7 +211,7 @@ describe('applyCatalog', () => {
         FROM models
        WHERE platform = 'groq' AND model_id = 'override-model'
     `).get() as { display_name: string; context_window: number; supports_tools: number };
-    expect(row).toEqual({ display_name: 'Local Name', context_window: 12345, supports_tools: 1 });
+    expect(row).toEqual({ display_name: 'Local Name', context_window: 12345, modalities: '["text","tools"]' });
   });
 
   it('keeps user-deleted catalog models deleted across catalog refreshes', () => {

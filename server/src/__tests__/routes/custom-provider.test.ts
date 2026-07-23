@@ -358,7 +358,7 @@ describe('Custom Provider Endpoints', () => {
     });
   });
 
-  // #470: custom models used to register with supports_tools = 0, so agentic
+  // #470: custom models used to register with modalities NOT LIKE '%\"tools\"%', so agentic
   // clients that send `tools` matched zero of them and hit a false "all models
   // exhausted" error. Registration now defaults tools on, vision off.
   describe('capability defaults (#470)', () => {
@@ -371,8 +371,8 @@ describe('Custom Provider Endpoints', () => {
 
     function toolsVision(modelId: string) {
       return getDb()
-        .prepare("SELECT supports_tools, supports_vision FROM models WHERE platform = 'custom' AND model_id = ?")
-        .get(modelId) as { supports_tools: number; supports_vision: number };
+        .prepare("SELECT modalities FROM models WHERE platform = 'custom' AND model_id = ?")
+        .get(modelId) as { modalities: string;  };
     }
 
     it('defaults a new custom model to tools on, vision off', async () => {
@@ -381,7 +381,7 @@ describe('Custom Provider Endpoints', () => {
         model: 'defaults-model',
       });
       expect(status).toBe(201);
-      expect(toolsVision('defaults-model')).toEqual({ supports_tools: 1, supports_vision: 0 });
+      expect(toolsVision('defaults-model')).toEqual({ modalities: '["text","tools"]', modalities: '["text"]' });
       // Echoed back to the client so the UI can render the capability badges.
       expect(body.supportsTools).toBe(true);
       expect(body.supportsVision).toBe(false);
@@ -391,33 +391,31 @@ describe('Custom Provider Endpoints', () => {
       const { status } = await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5002/v1',
         model: 'vision-no-tools',
-        supportsTools: false,
-        supportsVision: true,
+        modalities: JSON.stringify(['text', 'vision', 'tools']),
       });
       expect(status).toBe(201);
-      expect(toolsVision('vision-no-tools')).toEqual({ supports_tools: 0, supports_vision: 1 });
+      expect(toolsVision('vision-no-tools')).toEqual({ modalities: '["text"]', modalities: '["text","vision"]' });
     });
 
     it('honors per-entry flags in the models array and per-model defaults', async () => {
       const { status } = await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5003/v1',
         models: [
-          { model: 'entry-vision', supportsVision: true },
+          { model: 'entry-vision', modalities: JSON.stringify(['text', 'vision', 'tools']),
           'entry-default',
         ],
       });
       expect(status).toBe(201);
-      expect(toolsVision('entry-vision')).toEqual({ supports_tools: 1, supports_vision: 1 });
-      expect(toolsVision('entry-default')).toEqual({ supports_tools: 1, supports_vision: 0 });
+      expect(toolsVision('entry-vision')).toEqual({ modalities: '["text","tools"]', modalities: '["text","vision"]' });
+      expect(toolsVision('entry-default')).toEqual({ modalities: '["text","tools"]', modalities: '["text"]' });
     });
 
     it('preserves a stored capability when re-registration omits the flag', async () => {
       await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5004/v1',
         model: 'preserve-model',
-        supportsTools: false,
       });
-      expect(toolsVision('preserve-model')).toEqual({ supports_tools: 0, supports_vision: 0 });
+      expect(toolsVision('preserve-model')).toEqual({ modalities: '["text"]', modalities: '["text"]' });
 
       // Re-submit the same endpoint/model without capability flags — the earlier
       // tools = 0 the user chose must survive, not snap back to the default.
@@ -427,14 +425,13 @@ describe('Custom Provider Endpoints', () => {
         displayName: 'Renamed',
       });
       expect(status).toBe(201);
-      expect(toolsVision('preserve-model')).toEqual({ supports_tools: 0, supports_vision: 0 });
+      expect(toolsVision('preserve-model')).toEqual({ modalities: '["text"]', modalities: '["text"]' });
     });
 
     it('rejects a non-boolean capability flag', async () => {
       const { status } = await post(app, '/api/keys/custom', {
         baseUrl: 'http://127.0.0.1:5005/v1',
         model: 'bad-flag',
-        supportsTools: 'yes',
       });
       expect(status).toBe(400);
     });

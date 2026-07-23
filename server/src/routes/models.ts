@@ -29,6 +29,7 @@ const modelUpdateSchema = z.object({
   enabled: z.boolean().optional(),
   supportsVision: z.boolean().optional(),
   supportsTools: z.boolean().optional(),
+  
   fallbackEnabled: z.boolean().optional(),
 }).strict();
 
@@ -45,6 +46,7 @@ const MODEL_FIELD_COLUMNS: Record<keyof ModelOverridePatch | 'enabled', string> 
   contextWindow: 'context_window',
   supportsVision: 'supports_vision',
   supportsTools: 'supports_tools',
+  modalities: 'modalities',
   enabled: 'enabled',
 };
 
@@ -240,8 +242,9 @@ modelsRouter.get('/', (_req: Request, res: Response) => {
       monthlyTokenBudget: m.monthly_token_budget,
       contextWindow: m.context_window,
       enabled: m.enabled === 1,
-      supportsVision: m.supports_vision === 1,
-      supportsTools: m.supports_tools === 1,
+      supportsVision: typeof m.modalities === 'string' ? m.modalities.includes('vision') : false,
+      supportsTools: typeof m.modalities === 'string' ? m.modalities.includes('tools') : false,
+      
       priority: m.priority,
       fallbackEnabled: m.fallback_enabled === 1,
       source: m.platform === 'custom' || m.key_id != null ? 'custom' : 'catalog',

@@ -44,7 +44,6 @@ describe('Model management API', () => {
 
     const { status, body } = await request(app, 'PATCH', `/api/models/${target.id}`, {
       displayName: 'Locally tuned model',
-      supportsTools: true,
       contextWindow: 123456,
       fallbackEnabled: false,
     });
@@ -52,14 +51,14 @@ describe('Model management API', () => {
     expect(body.success).toBe(true);
 
     const row = getDb().prepare(`
-      SELECT m.display_name, m.supports_tools, m.context_window, fc.enabled AS fallback_enabled
+      SELECT m.display_name, m.context_window, fc.enabled AS fallback_enabled
         FROM models m
         JOIN fallback_config fc ON fc.model_db_id = m.id
        WHERE m.id = ?
-    `).get(target.id) as { display_name: string; supports_tools: number; context_window: number; fallback_enabled: number };
+    `).get(target.id) as { display_name: string; modalities: string; context_window: number; fallback_enabled: number };
     expect(row).toEqual({
       display_name: 'Locally tuned model',
-      supports_tools: 1,
+      modalities: '["text","tools"]',
       context_window: 123456,
       fallback_enabled: 0,
     });
@@ -68,7 +67,6 @@ describe('Model management API', () => {
       .get(target.id) as { overrides_json: string };
     expect(JSON.parse(override.overrides_json)).toMatchObject({
       displayName: 'Locally tuned model',
-      supportsTools: true,
       contextWindow: 123456,
     });
 
@@ -89,15 +87,14 @@ describe('Model management API', () => {
     const modelDbId = reg.body.modelDbId as number;
 
     const { status, body } = await request(app, 'PATCH', `/api/models/${modelDbId}`, {
-      supportsVision: true,
-      supportsTools: false,
+      modalities: ['text', 'vision'],
     });
     expect(status).toBe(200);
     expect(body.success).toBe(true);
 
-    const row = getDb().prepare('SELECT supports_vision, supports_tools FROM models WHERE id = ?')
-      .get(modelDbId) as { supports_vision: number; supports_tools: number };
-    expect(row).toEqual({ supports_vision: 1, supports_tools: 0 });
+    const row = getDb().prepare('SELECT modalities FROM models WHERE id = ?')
+      .get(modelDbId) as {   };
+    expect(row).toEqual({ modalities: '["text","vision"]', modalities: '["text"]' });
 
     const override = getDb().prepare("SELECT 1 FROM model_overrides WHERE platform = 'custom' AND model_id = 'cap-edit-model'").get();
     expect(override).toBeUndefined();

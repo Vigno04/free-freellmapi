@@ -14,6 +14,7 @@ import { parseBudget } from '../lib/budget.js';
 import { getModelGroups } from '../services/model-groups.js';
 import { getPenaltyInspector } from '../services/penalty-inspector.js';
 import { getProvider } from '../providers/index.js';
+import { getActiveProfileId } from '../services/profile-models.js';
 
 export const fallbackRouter = Router();
 
@@ -135,7 +136,7 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
            COALESCE(bm.intelligence_score, m.intelligence_rank) AS intelligence_rank,
            m.speed_rank, m.size_label, m.rpm_limit, m.rpd_limit,
            m.tpm_limit, m.tpd_limit, m.context_window,
-           m.monthly_token_budget, m.supports_vision, m.supports_tools,
+           m.monthly_token_budget, m.modalities,
            bm.creator, bm.coding_score, bm.agentic_score, bm.aa_slug, bm.intelligence_score AS aa_intelligence_score,
            m.key_id, ak.label AS key_label,
            mo.overrides_json,
@@ -217,7 +218,7 @@ fallbackRouter.get('/', (_req: Request, res: Response) => {
       // Scaled by healthy/enabled key count for multi-account pooled capacity.
       monthlyTokenBudgetTokens: estimatedTokens * Math.max(1, keyCountMap.get(r.platform) ?? 1),
       supportsVision: r.supports_vision === 1,
-      supportsTools: r.supports_tools === 1,
+      
       source: r.platform === 'custom' || r.key_id != null ? 'custom' : 'catalog',
       keyId: r.key_id ?? null,
       keyLabel: r.key_label ?? null,

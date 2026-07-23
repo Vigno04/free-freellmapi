@@ -16,6 +16,7 @@ export interface ModelOverridePatch {
   supportsVision?: boolean;
   supportsTools?: boolean;
   enabled?: boolean;
+  modalities?: string;
 }
 
 export type StoredOverrides = Partial<ModelOverridePatch> & {
@@ -38,6 +39,7 @@ const OVERRIDE_COLUMNS: Record<keyof ModelOverridePatch, string> = {
   supportsVision: 'supports_vision',
   supportsTools: 'supports_tools',
   enabled: 'enabled',
+  modalities: 'modalities',
 };
 
 function parseOverrides(raw: string | undefined): StoredOverrides {

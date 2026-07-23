@@ -430,7 +430,7 @@ function selectPanel(config: FusionConfig, requirements: { requireTools?: boolea
       if (panel.length >= maxK) { dropped.push(`${id} (over cap of ${maxK})`); continue; }
       const cand = resolveFusionCandidate(id);
       if (!cand) { dropped.push(`${id} (unknown or disabled)`); continue; }
-      if (requirements.requireTools && !cand.supportsTools) { dropped.push(`${id} (no tool-calling support)`); continue; }
+      if (requirements.requireTools && !(cand.modalities && cand.modalities.includes('tools'))) { dropped.push(`${id} (no tool-calling support)`); continue; }
       if (seen.has(cand.modelDbId)) continue; // de-dup repeats
       seen.add(cand.modelDbId);
       panel.push(cand);
@@ -440,7 +440,7 @@ function selectPanel(config: FusionConfig, requirements: { requireTools?: boolea
   }
 
   const k = Math.min(Math.max(config.k ?? panelDefaultK(), 1), maxK);
-  const ordered = getOrderedFusionChain().filter(c => !requirements.requireTools || c.supportsTools);
+  const ordered = getOrderedFusionChain().filter(c => !requirements.requireTools || (c.modalities && c.modalities.includes('tools')));
 
   // Diversity-first ordering of the whole servable chain along provider AND
   // model family (see diversifyChain). The first K are the panel; the rest are

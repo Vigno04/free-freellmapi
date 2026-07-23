@@ -180,8 +180,7 @@ describe('migration runner', () => {
     try {
       db.exec(`
         CREATE TABLE models (
-          id INTEGER PRIMARY KEY,
-          supports_tools INTEGER NOT NULL DEFAULT 0
+          id INTEGER PRIMARY KEY INTEGER NOT NULL DEFAULT 0
         );
       `);
 
@@ -205,7 +204,7 @@ describe('migration runner', () => {
       import type Database from 'better-sqlite3';
 
       export function up(db: Database.Database): void {
-        db.exec('CREATE TABLE models (id INTEGER PRIMARY KEY, supports_tools INTEGER NOT NULL DEFAULT 0)');
+        db.exec('CREATE TABLE models (id INTEGER PRIMARY KEY INTEGER NOT NULL DEFAULT 0)');
       }
 
       export function down(_db: Database.Database): void {

@@ -125,8 +125,7 @@ export interface ChainRow {
   rpd_limit: number | null;
   tpm_limit: number | null;
   tpd_limit: number | null;
-  supports_vision: number;
-  supports_tools: number;
+  modalities: string;
   context_window: number | null;
   aa_intelligence_score: number | null;
   // Custom models bind to the api_keys row carrying their endpoint (#212);
@@ -529,8 +528,8 @@ function getActiveChain(db: Db): ChainRow[] {
       SELECT pm.model_db_id, pm.priority, pm.enabled,
              m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
              m.size_label, m.monthly_token_budget,
-             m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-             m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
+             m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+             m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
       FROM profile_models pm
       JOIN models m ON m.id = pm.model_db_id AND m.enabled = 1
       LEFT JOIN base_models bm ON m.base_model_id = bm.id
@@ -545,8 +544,8 @@ function getActiveChain(db: Db): ChainRow[] {
     SELECT fc.model_db_id, fc.priority, fc.enabled,
            m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
-           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
+           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+           m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM fallback_config fc
     JOIN models m ON m.id = fc.model_db_id AND m.enabled = 1
     LEFT JOIN base_models bm ON m.base_model_id = bm.id
@@ -562,8 +561,8 @@ function getChainByProfileName(db: Db, name: string): ChainRow[] | null {
     SELECT pm.model_db_id, pm.priority, pm.enabled,
            m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
-           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
+           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+           m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM profile_models pm
       JOIN models m ON m.id = pm.model_db_id AND m.enabled = 1
       LEFT JOIN base_models bm ON m.base_model_id = bm.id
@@ -577,8 +576,8 @@ function getChainByGlobalSort(db: Db, globalAxis: string): ChainRow[] {
     SELECT m.id as model_db_id, 0 as priority, 1 as enabled,
            m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
-           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
+           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+           m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM models m
     LEFT JOIN base_models bm ON m.base_model_id = bm.id
     WHERE m.enabled = 1
@@ -798,8 +797,8 @@ function getModelChainRow(db: Db, modelDbId: number): ChainRow | undefined {
     SELECT m.id as model_db_id, 0 as priority, 1 as enabled,
            m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
-           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
+           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+           m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM models m
     LEFT JOIN base_models bm ON m.base_model_id = bm.id
     WHERE m.id = ? AND m.enabled = 1
@@ -846,8 +845,8 @@ export function resolveModelGroupCandidates(memberDbIds: number[]): ChainRow[] {
            COALESCE(fc.enabled, 1) as enabled,
            m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
-           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
+           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+           m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
     FROM models m
     LEFT JOIN base_models bm ON m.base_model_id = bm.id
     LEFT JOIN fallback_config fc ON fc.model_db_id = m.id
@@ -856,6 +855,7 @@ export function resolveModelGroupCandidates(memberDbIds: number[]): ChainRow[] {
 
   const rows: ChainRow[] = [];
   for (const id of memberDbIds) {
+    const activeProfileId = getActiveProfileId(db);
     const row = (activeProfileId == null ? selectMember.get(id) : selectMember.get(activeProfileId, id)) as ChainRow | undefined;
     if (row) rows.push(row);
   }
@@ -870,8 +870,7 @@ export interface FusionCandidate {
   modelId: string;
   displayName: string;
   sizeLabel: string;
-  supportsVision: number;
-  supportsTools: number;
+  modalities: string;
 }
 
 /**
@@ -925,8 +924,8 @@ export function getOrderedFusionChain(): FusionCandidate[] {
     modelId: e.model_id,
     displayName: e.display_name,
     sizeLabel: e.size_label,
-    supportsVision: e.supports_vision,
-    supportsTools: e.supports_tools,
+    modalities: e.modalities,
+    
   }));
 }
 
@@ -940,14 +939,14 @@ export function resolveFusionCandidate(modelId: string): FusionCandidate | null 
   const db = getDb();
   const row = db.prepare(`
     SELECT m.id as model_db_id, m.platform, m.model_id, m.display_name,
-           m.size_label, m.supports_vision, m.supports_tools
+           m.size_label, m.modalities
     FROM models m
     WHERE m.model_id = ? AND m.enabled = 1
     ORDER BY m.intelligence_rank ASC, m.id ASC
     LIMIT 1
   `).get(modelId) as {
     model_db_id: number; platform: string; model_id: string; display_name: string;
-    size_label: string; supports_vision: number; supports_tools: number;
+    size_label: string; modalities: string;
   } | undefined;
   if (row) {
     return {
@@ -956,8 +955,8 @@ export function resolveFusionCandidate(modelId: string): FusionCandidate | null 
       modelId: row.model_id,
       displayName: row.display_name,
       sizeLabel: row.size_label,
-      supportsVision: row.supports_vision,
-      supportsTools: row.supports_tools,
+      modalities: JSON.parse(row.modalities || '[]'),
+      
     };
   }
 
@@ -976,8 +975,8 @@ export function resolveFusionCandidate(modelId: string): FusionCandidate | null 
           modelId: top.model_id,
           displayName: top.display_name,
           sizeLabel: top.size_label,
-          supportsVision: top.supports_vision,
-          supportsTools: top.supports_tools,
+          modalities: JSON.parse(top.modalities || '[]'),
+          
         };
       }
     }
@@ -1011,8 +1010,8 @@ export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, pre
         SELECT m.id as model_db_id, 0 as priority, 1 as enabled,
                m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
                m.size_label, m.monthly_token_budget,
-               m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-               m.supports_tools, m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
+               m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+               m.context_window, m.key_id, bm.intelligence_score AS aa_intelligence_score
         FROM models m
         LEFT JOIN base_models bm ON m.base_model_id = bm.id
         WHERE m.id = ? AND m.enabled = 1
@@ -1039,14 +1038,14 @@ export function routeRequest(estimatedTokens = 1000, skipKeys?: Set<string>, pre
 
     // Vision requests skip text-only models — including a sticky/preferred one,
     // which is correct: don't pin an image turn to a model that can't see it.
-    if (requireVision && !entry.supports_vision) { diag.push(`${label}: no vision support`); continue; }
+    if (requireVision && !entry.modalities.includes('"vision"')) { diag.push(`${label}: no vision support`); continue; }
 
     // Tool-bearing requests skip models that can't emit structured tool_calls.
     // A model that "answers" a tool request with the call serialized as text
     // looks successful at the transport level while the client's harness sees
     // nothing — worse than a failover. Applies to sticky models too, same
     // reasoning as vision above.
-    if (requireTools && !entry.supports_tools) { diag.push(`${label}: no tool-calling support`); continue; }
+    if (requireTools && !entry.modalities.includes('"tools"')) { diag.push(`${label}: no tool-calling support`); continue; }
 
     // Structured-output routing (#514 follow-up): when the request carries a
     // response_format, skip platforms whose param policy can't even receive it
@@ -1116,8 +1115,8 @@ export function getRoutingScores(strategyOverride?: RoutingStrategy, weightsOver
     SELECT fc.model_db_id, fc.priority, fc.enabled,
            m.platform, m.model_id, m.display_name, m.intelligence_rank, bm.intelligence_score AS aa_intelligence_score,
            m.size_label, m.monthly_token_budget,
-           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.supports_vision,
-           m.supports_tools, m.context_window, bm.intelligence_score AS aa_intelligence_score
+           m.rpm_limit, m.rpd_limit, m.tpm_limit, m.tpd_limit, m.modalities,
+           m.context_window, bm.intelligence_score AS aa_intelligence_score
     FROM fallback_config fc
     JOIN models m ON m.id = fc.model_db_id
     LEFT JOIN base_models bm ON m.base_model_id = bm.id
@@ -1161,7 +1160,7 @@ export function getRoutingScores(strategyOverride?: RoutingStrategy, weightsOver
 // the generic exhaustion message when none is configured (#118, #125).
 export function hasEnabledVisionModel(): boolean {
   const db = getDb();
-  return getActiveChain(db).some(entry => entry.enabled === 1 && entry.supports_vision === 1);
+  return getActiveChain(db).some(entry => entry.enabled === 1 && entry.modalities && entry.modalities.includes('vision'));
 }
 
 // Whether at least one tool-capable model is enabled in the fallback chain.
@@ -1169,5 +1168,5 @@ export function hasEnabledVisionModel(): boolean {
 // requests beats routing them to a model that mangles the tool call.
 export function hasEnabledToolsModel(): boolean {
   const db = getDb();
-  return getActiveChain(db).some(entry => entry.enabled === 1 && entry.supports_tools === 1);
+  return getActiveChain(db).some(entry => entry.enabled === 1 && entry.modalities && entry.modalities.includes('tools'));
 }

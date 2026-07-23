@@ -495,34 +495,33 @@ keysRouter.post('/custom', async (req: Request, res: Response) => {
       storedKeyForMask = keyToStore;
     }
 
-    const registered: { modelDbId: number; model: string; displayName: string; supportsTools: boolean; supportsVision: boolean }[] = [];
+    const registered: { modelDbId: number; model: string; displayName: string; supportsTools?: boolean; supportsVision?: boolean }[] = [];
     for (const { modelId, displayName, supportsTools, supportsVision } of entries) {
       // Register each model bound to THIS endpoint's key. Custom models carry no
       // rate limits and sort last in the intelligence preset (size_label tier).
       // Re-registering an existing model id re-binds it (model ids are unique
       // per platform, so one id can't live on two endpoints at once).
-      // Capability flags: an unset flag binds NULL so COALESCE picks the insert
-      // default (tools 1, vision 0) on a new row and preserves the existing
-      // value on re-registration. (#470)
-      const toolsParam = supportsTools === undefined ? null : (supportsTools ? 1 : 0);
-      const visionParam = supportsVision === undefined ? null : (supportsVision ? 1 : 0);
+      const modArray = ['text'];
+      if (supportsVision) modArray.push('vision');
+      if (supportsTools !== false) modArray.push('tools');
+      const modalitiesStr = JSON.stringify(modArray);
+      
       db.prepare(`
         INSERT INTO models
           (platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
            rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget, context_window, enabled, key_id,
-           supports_tools, supports_vision)
+           modalities)
         VALUES ('custom', @modelId, @displayName, 50, 50, 'Custom', NULL, NULL, NULL, NULL, '', NULL, 1, @keyId,
-           COALESCE(@tools, 1), COALESCE(@vision, 0))
+           @modalities)
         ON CONFLICT(platform, model_id)
         DO UPDATE SET
           display_name = excluded.display_name,
           key_id = excluded.key_id,
           enabled = 1,
-          supports_tools = COALESCE(@tools, supports_tools),
-          supports_vision = COALESCE(@vision, supports_vision)
-      `).run({ modelId, displayName, keyId, tools: toolsParam, vision: visionParam });
+          modalities = @modalities
+      `).run({ modelId, displayName, keyId, modalities: modalitiesStr });
 
-      const modelRow = db.prepare("SELECT id, supports_tools, supports_vision FROM models WHERE platform = 'custom' AND model_id = ?").get(modelId) as { id: number; supports_tools: number; supports_vision: number };
+      const modelRow = db.prepare("SELECT id, modalities FROM models WHERE platform = 'custom' AND model_id = ?").get(modelId) as { id: number; modalities: string; };
 
       // Append to the fallback chain if not already present.
       const inChain = db.prepare('SELECT 1 FROM fallback_config WHERE model_db_id = ?').get(modelRow.id);
@@ -536,8 +535,8 @@ keysRouter.post('/custom', async (req: Request, res: Response) => {
         modelDbId: modelRow.id,
         model: modelId,
         displayName,
-        supportsTools: modelRow.supports_tools === 1,
-        supportsVision: modelRow.supports_vision === 1,
+        supportsTools: modelRow.modalities.includes('tools'),
+        supportsVision: modelRow.modalities.includes('vision'),
       });
     }
 

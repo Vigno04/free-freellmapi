@@ -12,6 +12,7 @@ import {
   deleteTombstonedCatalogModels,
   isCatalogModelTombstoned,
 } from './model-state.js';
+import { ensureAllModelsInProfiles } from './profile-models.js';
 import { normalizeGroupKey, ensureBaseModels } from './model-groups.js';
 
 // Generative-media modalities are routed into the separate media_models table

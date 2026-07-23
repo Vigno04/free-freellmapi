@@ -142,9 +142,9 @@ describe('fusion route (/v1/chat/completions, model: "fusion")', () => {
     groqModel = pick('groq');
     cerebrasModel = pick('cerebras');
     openrouterModel = pick('openrouter');
-    toolGroqModel = pick('groq', 'AND m.supports_tools = 1');
-    toolCerebrasModel = pick('cerebras', 'AND m.supports_tools = 1');
-    nonToolOpenrouterModel = pick('openrouter', 'AND m.supports_tools = 0');
+    toolGroqModel = pick('groq', 'AND m.modalities LIKE '%\"tools\"%'');
+    toolCerebrasModel = pick('cerebras', 'AND m.modalities LIKE '%\"tools\"%'');
+    nonToolOpenrouterModel = pick('openrouter', 'AND m.modalities NOT LIKE '%\"tools\"%'');
   });
 
   beforeEach(async () => {
@@ -569,7 +569,7 @@ describe('familyKey', () => {
 describe('diversifyChain', () => {
   const cand = (platform: string, modelId: string): FusionCandidate => ({
     modelDbId: 0, platform, modelId, displayName: modelId,
-    sizeLabel: 'Large', supportsVision: 0, supportsTools: 0,
+    sizeLabel: 'Large', modalities: JSON.stringify(['text', 'vision', 'tools']),
   });
 
   it('prefers a fresh-family model over a same-family model on a new provider', () => {

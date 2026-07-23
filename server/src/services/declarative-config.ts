@@ -104,8 +104,7 @@ interface NormalizedCustomModel {
   sizeLabel?: string;
   monthlyTokenBudget?: string;
   contextWindow?: number | null;
-  supportsVision?: boolean;
-  supportsTools?: boolean;
+  modalities?: string[];
   fallbackEnabled?: boolean;
 }
 
@@ -205,8 +204,8 @@ function registerCustomProvider(db: Db, input: z.infer<typeof customProviderSche
       INSERT INTO models
         (platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
          rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget, context_window,
-         enabled, supports_vision, supports_tools, key_id)
-      VALUES ('custom', ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, 1, ?, ?, ?)
+         enabled, modalities, key_id)
+      VALUES ('custom', ?, ?, ?, ?, ?, NULL, NULL, NULL, NULL, ?, ?, 1, ?, ?)
       ON CONFLICT(platform, model_id)
       DO UPDATE SET
         display_name = excluded.display_name,
@@ -215,8 +214,7 @@ function registerCustomProvider(db: Db, input: z.infer<typeof customProviderSche
         size_label = excluded.size_label,
         monthly_token_budget = excluded.monthly_token_budget,
         context_window = excluded.context_window,
-        supports_vision = excluded.supports_vision,
-        supports_tools = excluded.supports_tools,
+        modalities = excluded.modalities,
         key_id = excluded.key_id,
         enabled = 1
     `).run(
@@ -227,8 +225,7 @@ function registerCustomProvider(db: Db, input: z.infer<typeof customProviderSche
       model.sizeLabel ?? 'Custom',
       model.monthlyTokenBudget ?? '',
       model.contextWindow ?? null,
-      model.supportsVision ? 1 : 0,
-      model.supportsTools ? 1 : 0,
+      JSON.stringify(model.modalities ?? ['text']),
       keyId,
     );
     const row = db.prepare("SELECT id FROM models WHERE platform = 'custom' AND model_id = ?").get(model.modelId) as { id: number };
@@ -262,7 +259,7 @@ function upsertModel(db: Db, input: z.infer<typeof modelSchema>): void {
       INSERT INTO models
         (platform, model_id, display_name, intelligence_rank, speed_rank, size_label,
          rpm_limit, rpd_limit, tpm_limit, tpd_limit, monthly_token_budget, context_window,
-         enabled, supports_vision, supports_tools)
+         enabled, modalities)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       platform,
@@ -303,6 +300,7 @@ function upsertModel(db: Db, input: z.infer<typeof modelSchema>): void {
     supportsVision: 'supports_vision',
     supportsTools: 'supports_tools',
     enabled: 'enabled',
+    modalities: 'modalities',
   };
   for (const key of Object.keys(patch) as Array<keyof ModelOverridePatch>) {
     assignments.push(`${columnMap[key]} = ?`);

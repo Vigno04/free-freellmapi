@@ -8,6 +8,8 @@ import * as requestClientInfo from '../migrations/20260706_000001_request_client
 import * as customModelToolSupport from '../migrations/20260706_000002_custom_model_tool_support.js';
 import * as baseModelsEntity from '../migrations/20260714_000000_base_models_entity.js';
 
+import * as modelModalities from '../migrations/20260715_000000_model_modalities.js';
+
 export interface MigrationModule {
   up(db: Db): void;
   down(db: Db): void;
@@ -26,6 +28,7 @@ export const GITHUB_GPT41_CONTEXT_FILENAME = '20260630_000001_github_gpt41_conte
 export const REQUEST_CLIENT_INFO_FILENAME = '20260706_000001_request_client_info.ts';
 export const CUSTOM_MODEL_TOOL_SUPPORT_FILENAME = '20260706_000002_custom_model_tool_support.ts';
 export const BASE_MODELS_ENTITY_FILENAME = '20260714_000000_base_models_entity.ts';
+export const MODEL_MODALITIES_FILENAME = '20260715_000000_model_modalities.ts';
 
 export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: LEGACY_BASELINE_FILENAME, module: legacyBaseline },
@@ -36,4 +39,5 @@ export const DEFAULT_MIGRATIONS: readonly DefaultMigration[] = [
   { filename: REQUEST_CLIENT_INFO_FILENAME, module: requestClientInfo },
   { filename: CUSTOM_MODEL_TOOL_SUPPORT_FILENAME, module: customModelToolSupport },
   { filename: BASE_MODELS_ENTITY_FILENAME, module: baseModelsEntity },
+  { filename: MODEL_MODALITIES_FILENAME, module: modelModalities },
 ];

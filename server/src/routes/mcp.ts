@@ -73,7 +73,6 @@ function listModels(args: Record<string, unknown>): unknown {
     context_window: m.contextWindow,
     available: m.available === 1,
     platforms: m.platforms,
-    supports_tools: m.supportsTools,
     supported_parameters: supportedParametersForPlatforms(m.platforms, { tools: m.supportsTools }),
   }));
   return {

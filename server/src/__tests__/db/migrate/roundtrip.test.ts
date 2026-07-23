@@ -92,7 +92,7 @@ describe('migration round trip', () => {
       `).run();
       const bmId = (db.prepare(`SELECT last_insert_rowid() as id`).get() as any).id;
       db.prepare(`
-        INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, supports_tools, supports_vision, enabled, base_model_id)
+        INSERT INTO models (platform, model_id, display_name, intelligence_rank, speed_rank, modalities, enabled, base_model_id)
         VALUES ('custom', 'roundtrip-custom', 'Roundtrip Custom', 50, 50, 1, 0, 1, ?)
       `).run(bmId);
 

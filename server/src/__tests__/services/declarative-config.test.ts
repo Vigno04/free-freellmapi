@@ -40,42 +40,41 @@ describe('declarative config import', () => {
         baseUrl: 'http://127.0.0.1:9123/v1',
         apiKey: 'local-key',
         label: 'Local config',
-        models: [{ model: 'local-chat', displayName: 'Local Chat', supportsTools: true, contextWindow: 32000 }],
+        models: [{ model: 'local-chat', displayName: 'Local Chat',
       }],
       models: [{
         platform: target.platform,
         modelId: target.model_id,
         displayName: 'Config Display',
-        supportsTools: true,
         contextWindow: 654321,
       }],
       fallback: [{ platform: target.platform, modelId: target.model_id, priority: 1, enabled: false }],
       routing: { strategy: 'custom', weights: { reliability: 3, speed: 1, intelligence: 2 } },
     });
 
-    expect(result).toMatchObject({ applied: true, keys: 1, customModels: 1, models: 1, fallback: 1, routing: true });
+    expect(result).toMatchObject({ applied: true, keys: 1, customModels: 1, models: 1, fallback: 1, routing: { strategy: 'custom' } });
     expect((getDb().prepare("SELECT COUNT(*) AS n FROM api_keys WHERE platform = 'groq'").get() as { n: number }).n).toBe(1);
     expect((getDb().prepare("SELECT COUNT(*) AS n FROM api_keys WHERE platform = 'custom'").get() as { n: number }).n).toBe(1);
     expect(getDb().prepare(`
-      SELECT display_name, supports_tools, context_window FROM models
+      SELECT display_name, context_window FROM models
        WHERE platform = 'custom' AND model_id = 'local-chat'
-    `).get()).toEqual({ display_name: 'Local Chat', supports_tools: 1, context_window: 32000 });
+    `).get()).toEqual({ display_name: 'Local Chat', modalities: '["text","tools"]', context_window: 32000 });
 
     const model = getDb().prepare(`
-      SELECT m.display_name, m.supports_tools, m.context_window, fc.priority, fc.enabled AS fallback_enabled
+      SELECT m.display_name, m.context_window, fc.priority, fc.enabled AS fallback_enabled
         FROM models m
         JOIN fallback_config fc ON fc.model_db_id = m.id
        WHERE m.platform = ? AND m.model_id = ?
     `).get(target.platform, target.model_id) as {
       display_name: string;
-      supports_tools: number;
+      modalities: string;
       context_window: number;
       priority: number;
       fallback_enabled: number;
     };
     expect(model).toEqual({
       display_name: 'Config Display',
-      supports_tools: 1,
+      modalities: '["text","tools"]',
       context_window: 654321,
       priority: 1,
       fallback_enabled: 0,

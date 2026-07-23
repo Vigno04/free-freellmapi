@@ -41,12 +41,12 @@ describe('Vision-aware routing (#118, #125)', () => {
 
   it('seeds supports_vision: true for vision models, false for text-only', () => {
     const db = getDb();
-    const vision = db.prepare("SELECT supports_vision FROM models WHERE model_id = 'gemini-2.5-flash'").get() as { supports_vision: number };
-    expect(vision.supports_vision).toBe(1);
+    const vision = db.prepare("SELECT supports_vision FROM models WHERE model_id = 'gemini-2.5-flash'").get() as {  };
+    expect(vision.modalities.includes('\"vision\"')).toBe(1);
 
     // The known vision set is flagged; plenty of text-only models remain at 0.
-    const visionCount = (db.prepare('SELECT COUNT(*) c FROM models WHERE supports_vision = 1').get() as { c: number }).c;
-    const textCount = (db.prepare('SELECT COUNT(*) c FROM models WHERE supports_vision = 0').get() as { c: number }).c;
+    const visionCount = (db.prepare('SELECT COUNT(*) c FROM models WHERE modalities LIKE '%\"vision\"%'').get() as { c: number }).c;
+    const textCount = (db.prepare('SELECT COUNT(*) c FROM models WHERE modalities NOT LIKE '%\"vision\"%'').get() as { c: number }).c;
     expect(visionCount).toBeGreaterThanOrEqual(4);
     expect(textCount).toBeGreaterThan(0);
   });
@@ -62,7 +62,7 @@ describe('Vision-aware routing (#118, #125)', () => {
 
   it('rejects an image request with a clear 422 when no vision model is enabled', async () => {
     // Disable every vision-capable model in the chain.
-    getDb().prepare('UPDATE models SET enabled = 0 WHERE supports_vision = 1').run();
+    getDb().prepare('UPDATE models SET enabled = 0 WHERE modalities LIKE '%\"vision\"%'').run();
 
     const { status, body } = await post(app, '/v1/chat/completions', IMAGE_MESSAGE, key);
     expect(status).toBe(422);
@@ -70,18 +70,18 @@ describe('Vision-aware routing (#118, #125)', () => {
     expect(body.error.type).toBe('invalid_request_error');
 
     // Restore so we don't leak state to other expectations.
-    getDb().prepare('UPDATE models SET enabled = 1 WHERE supports_vision = 1').run();
+    getDb().prepare('UPDATE models SET enabled = 1 WHERE modalities LIKE '%\"vision\"%'').run();
   });
 
   it('does not apply the vision gate to a text-only request', async () => {
     // Disable all vision models; a plain text request must still route normally
     // (it 429s on exhaustion here, but never the 422 vision error).
-    getDb().prepare('UPDATE models SET enabled = 0 WHERE supports_vision = 1').run();
+    getDb().prepare('UPDATE models SET enabled = 0 WHERE modalities LIKE '%\"vision\"%'').run();
     const { status, body } = await post(app, '/v1/chat/completions', {
       messages: [{ role: 'user', content: 'hello' }],
     }, key);
     expect(status).not.toBe(422);
     expect(body?.error?.code).not.toBe('no_vision_model');
-    getDb().prepare('UPDATE models SET enabled = 1 WHERE supports_vision = 1').run();
+    getDb().prepare('UPDATE models SET enabled = 1 WHERE modalities LIKE '%\"vision\"%'').run();
   });
 });
