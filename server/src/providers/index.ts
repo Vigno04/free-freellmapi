@@ -387,6 +387,13 @@ register(new OpenAICompatProvider({
   baseUrl: 'https://api.ai21.com/studio/v1',
 }));
 
+// SEA-LION — OpenAI-compatible
+register(new OpenAICompatProvider({
+  platform: 'sealion',
+  name: 'SEA-LION',
+  baseUrl: 'https://api.sea-lion.ai/v1',
+}));
+
 // AI Horde — free, community-powered inference (volunteer workers) via an
 // OpenAI-compatible proxy. Dedicated AIHordeProvider (not OpenAICompatProvider)
 // because the proxy is queue-based and diverges from the OpenAI contract:

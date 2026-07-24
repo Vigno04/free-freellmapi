@@ -535,9 +535,13 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     'siliconflow': 'siliconflow',
     'routeway': 'routeway',
     'bazaarlink': 'bazaarlink',
+    'bazaar-link': 'bazaarlink',
     'ainative': 'ainative',
+    'ai-native': 'ainative',
     'nara': 'nara',
+    'nara-router': 'nara',
     'ai-horde': 'aihorde',
+    'aihorde': 'aihorde',
     'modelscope': 'modelscope',
     'github-models': 'github',
     'aion-labs': 'aion',
@@ -548,7 +552,13 @@ export async function fetchFreellmModels(): Promise<CatalogModel[]> {
     'nscale': 'nscale',
     'nebius': 'nebius',
     'alibaba-cloud-model-studio': 'alibaba',
-    'ai21-labs': 'ai21'
+    'ai21-labs': 'ai21',
+    'pollinations': 'pollinations',
+    'requesty': 'requesty',
+    'navy-ai': 'navy',
+    'navyai': 'navy',
+    'sea-lion': 'sealion',
+    'sealion': 'sealion'
   };
 
   const trRegex = /<tr[^>]*?class="[^"]*?model-row[^"]*?"([^>]*?)>/g;
